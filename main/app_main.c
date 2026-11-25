@@ -8,6 +8,7 @@
 
 #include "audio.h"
 #include "canvas.h"
+#include "crash_report.h"
 #include "cyd_mac.h"
 #include "hal_esp.h"
 #include "panel.h"
@@ -42,7 +43,9 @@ void app_main(void)
     const bool sd = hal_esp_init();
     const bool touch = touch_init();   // before the sound: its INT pin is the amp's LRCLK
     if (!panel_init()) return;
-    ui_init();
+    // After a crash the saved disks stay out (one may be the cause)
+    const bool crashed = crash_report_show();
+    ui_init(!crashed);
     if (!sd) {
         hal_lock();
         cv_fill(MAC_X, MAC_Y, MAC_W, MAC_H, CV_WHITE);

@@ -309,7 +309,7 @@ static void insert_disk(const char* path)
     emu_post(EV_INSERT, (uint8_t)slot, 0, 0);
 }
 
-static void load_settings(void)
+static void load_settings(bool insert_saved_disks)
 {
     FILE* f = fopen(settings_path(), "r");
     if (!f) return;
@@ -326,7 +326,7 @@ static void load_settings(void)
         else if (!strcmp(line, "speed")) {
             for (int i = 0; i < N_SPEEDS; ++i)
                 if (!strcasecmp(v, kSpeeds[i].label)) s_set.speed = i;
-        } else if (!strcmp(line, "disk") && disks < INSERT_SLOTS) {
+        } else if (!strcmp(line, "disk") && insert_saved_disks && disks < INSERT_SLOTS) {
             insert_disk(v);   // the Mac picks them up as it starts
             ++disks;
         }
@@ -722,10 +722,10 @@ static bool on_mac(int x, int y)
 
 // ---------------------------------------------------------------- entry points
 
-void ui_init(void)
+void ui_init(bool insert_saved_disks)
 {
     s_mx = s_my = -1;
-    load_settings();
+    load_settings(insert_saved_disks);
     g_emu.sound_on = s_set.sound;
     if (s_set.speed) emu_post(EV_SPEED, kSpeeds[s_set.speed].value, 0, 0);
     build_keys();

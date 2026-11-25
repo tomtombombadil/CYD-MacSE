@@ -50,7 +50,7 @@ int main(int argc, char** argv)
         return 1;
     }
     hal_host_set_dir(argv[1]);
-    ui_init();
+    ui_init(true);
     pthread_t th;
     pthread_create(&th, NULL, emu_thread, NULL);
     int x = 0, y = 0;

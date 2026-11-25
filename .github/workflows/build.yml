@@ -121,4 +121,4 @@ jobs:
           Install from the web flasher: https://tomtombombadil.github.io/CYD-MacSE/
           or write the .bin at address 0x0. You need your own Mac SE ROM (MacSE.ROM) and disk images in a mac folder on the SD card: see the README.
           NOTES
-          gh release create "$V" bins/*.bin --target "$GITHUB_SHA" --title "CYD Mac SE $V" --notes-file notes.md
+          gh release create "$V" bins/*.bin bins/*.elf --target "$GITHUB_SHA" --title "CYD Mac SE $V" --notes-file notes.md

@@ -90,7 +90,8 @@ int emu_audio_pull(uint8_t* dst, int n);
 #define EMU_SOUND_RATE 22255
 
 // ---- the touch UI (ui.c), run on the UI thread ----
-void ui_init(void);
+// insert_saved_disks: put back the disks macse.txt lists (not after a crash)
+void ui_init(bool insert_saved_disks);
 // One touch reading: down = finger / stylus on the glass, x / y in pixels
 void ui_touch(bool down, int x, int y);
 // About 30 times a second: status lights, saving settings
