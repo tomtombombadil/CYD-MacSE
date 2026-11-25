@@ -66,7 +66,7 @@ jobs:
 
   # The web flasher (GitHub Pages): https://tomtombombadil.github.io/CYD-MacSE/
   pages:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: [host-test, firmware]
     runs-on: ubuntu-latest
     permissions:
@@ -95,7 +95,7 @@ jobs:
 
   # A GitHub release for each new VERSION on main (tag vX.Y.Z, made once)
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: [host-test, firmware]
     runs-on: ubuntu-latest
     permissions:
