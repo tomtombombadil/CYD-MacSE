@@ -1,0 +1,16 @@
+.pio/
+.vscode/
+build/
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
+host/obj/
+host/macse_host
+# Never commit ROMs or disk images
+*.ROM
+*.rom
+*.dsk
+*.img
+*.image
+*.hda
+*.hfv

@@ -1,0 +1,124 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The emulator and touch UI on the CI machine, with a stand-in ROM
+  # (tools/make_test_rom.py - no Apple code)
+  host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host test
+        run: sh host/test.sh
+
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: fnk50_rgb_cap
+            name: CYD-MacSE_5.0in_RGB_Capacitive
+    name: firmware (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-6.1.18-${{ hashFiles('platformio.ini') }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # PlatformIO 6.2.0's SCons breaks pioarduino's ESP-IDF build
+      - name: Install PlatformIO and esptool
+        run: python -m pip install platformio==6.1.18 esptool==4.8.1
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
+      - name: Size
+        run: |
+          B=.pio/build/${{ matrix.env }}
+          ls -l $B/*.bin
+          SIZE=$(find ~/.platformio/packages -name 'xtensa-esp32s3-elf-size' -o -name 'xtensa-esp-elf-size' | head -1)
+          [ -n "$SIZE" ] && "$SIZE" $B/firmware.elf || true
+      # One file, flashed at 0x0: bootloader + partition table + app
+      - name: Merge firmware
+        run: |
+          B=.pio/build/${{ matrix.env }}
+          mkdir -p out
+          esptool.py --chip esp32s3 merge_bin -o "out/${{ matrix.name }}.bin" \
+            --flash_mode keep --flash_freq keep --flash_size 16MB \
+            0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0x10000 $B/firmware.bin
+          cp $B/firmware.elf "out/${{ matrix.name }}.elf"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.env }}
+          path: out/*
+
+  # The web flasher (GitHub Pages): https://tomtombombadil.github.io/CYD-MacSE/
+  pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [host-test, firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bins
+          pattern: fw-*
+          merge-multiple: true
+      - name: Assemble site
+        run: python3 tools/make_site.py --bins bins --version "v$(tr -d ' \r\n' < VERSION)" --out _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # A GitHub release for each new VERSION on main (tag vX.Y.Z, made once)
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [host-test, firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bins
+          pattern: fw-*
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="v$(tr -d ' \r\n' < VERSION)"
+          if gh release view "$V" >/dev/null 2>&1; then
+            echo "$V already released"; exit 0
+          fi
+          cat > notes.md <<NOTES
+          CYD Mac SE $V for the Freenove 5.0" ESP32-S3 (FNK0115Q / Hosyond 800x480).
+
+          Install from the web flasher: https://tomtombombadil.github.io/CYD-MacSE/
+          or write the .bin at address 0x0. You need your own Mac SE ROM (MacSE.ROM) and disk images in a mac folder on the SD card: see the README.
+          NOTES
+          gh release create "$V" bins/*.bin --target "$GITHUB_SHA" --title "CYD Mac SE $V" --notes-file notes.md

@@ -1,0 +1,73 @@
+// PC test build: runs the emulator and the touch UI with scripted taps.
+//   macse_host <folder> [command ...]
+// <folder> holds MacSE.ROM and disk images (as the SD card's mac folder).
+// Commands, run in order:
+//   wait:<ms>          let the Mac run
+//   tap:<x>,<y>        a tap on the 800x480 glass (held 80 ms)
+//   press:<x>,<y> / move:<x>,<y> / release
+//   shot:<file.pbm>    save the screen (1-bit PBM)
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cyd_mac.h"
+
+void hal_host_set_dir(const char* d);
+
+static void* emu_thread(void* arg)
+{
+    (void)arg;
+    emu_main();
+    return NULL;
+}
+
+static void run_ui(int ms)
+{
+    // the UI polls touch about every 10 ms on the board
+    for (int t = 0; t < ms; t += 10) {
+        ui_tick();
+        hal_sleep_ms(10);
+    }
+}
+
+static void shot(const char* path)
+{
+    FILE* f = fopen(path, "wb");
+    if (!f) return;
+    fprintf(f, "P4\n%d %d\n", CANVAS_W, CANVAS_H);
+    hal_lock();
+    fwrite(g_canvas, 1, sizeof g_canvas, f);
+    hal_unlock();
+    fclose(f);
+    printf("saved %s\n", path);
+}
+
+int main(int argc, char** argv)
+{
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s <folder> [wait:ms tap:x,y shot:file.pbm ...]\n", argv[0]);
+        return 1;
+    }
+    hal_host_set_dir(argv[1]);
+    ui_init();
+    pthread_t th;
+    pthread_create(&th, NULL, emu_thread, NULL);
+    int x = 0, y = 0;
+    for (int i = 2; i < argc; ++i) {
+        const char* a = argv[i];
+        if (!strncmp(a, "wait:", 5)) run_ui(atoi(a + 5));
+        else if (sscanf(a, "tap:%d,%d", &x, &y) == 2) {
+            ui_touch(true, x, y);
+            run_ui(80);
+            ui_touch(false, x, y);
+            run_ui(20);
+        } else if (sscanf(a, "press:%d,%d", &x, &y) == 2) { ui_touch(true, x, y); run_ui(20); }
+        else if (sscanf(a, "move:%d,%d", &x, &y) == 2) { ui_touch(true, x, y); run_ui(20); }
+        else if (!strcmp(a, "release")) { ui_touch(false, x, y); run_ui(20); }
+        else if (!strncmp(a, "shot:", 5)) shot(a + 5);
+        else fprintf(stderr, "unknown command %s\n", a);
+    }
+    printf("ticks %u, rom %d, drives %x\n", g_emu.ticks, g_emu.rom, g_emu.drives);
+    return 0;
+}
