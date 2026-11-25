@@ -11,7 +11,7 @@
 
 #define MayInline inline __attribute__((always_inline))
 #define MayNotInline __attribute__((noinline))
-#define SmallGlobals 0
+#define SmallGlobals 1 /* the 512 KB opcode table goes in the big (PSRAM) block */
 #define cIncludeUnused 0
 #define UnusedParam(p) (void) p
 

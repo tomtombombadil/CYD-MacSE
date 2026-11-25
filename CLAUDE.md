@@ -41,7 +41,8 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   `main/` the board: RGB panel, GT911, I2S, SD, tasks. `host/` PC build.
 - Display: one 800x480 **1-bit canvas in internal RAM** (48 KB); ESP-IDF's
   RGB driver with no frame buffer, our bounce-buffer refill expands it to
-  RGB565. Nothing of the picture is in PSRAM (the Mac's RAM is, and keeps
+  RGB565. Nothing of the picture is in PSRAM (the Mac's RAM and the 68000
+  core's 512 KB opcode table are: SmallGlobals 1, too big for DRAM; keeps
   the cache). Never use a DMA that reads PSRAM (cyd-classic-arcade
   v0.26.0's lesson).
 - Cores: core 0 the panel interrupt, UI / touch (10 ms poll), sound;

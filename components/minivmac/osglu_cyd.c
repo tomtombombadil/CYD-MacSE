@@ -831,7 +831,7 @@ LOCALFUNC blnr AllocMyMemory(void)
 	ReserveAllocBigBlock = nullpr;
 	ReserveAllocAll();
 	n = ReserveAllocOffset;
-	/* about 4.3 MB: PSRAM on the CYD (malloc takes it from there) */
+	/* about 4.8 MB (Mac RAM, ROM, 512 KB opcode table): PSRAM on the CYD */
 	ReserveAllocBigBlock = (ui3p)calloc(1, n);
 	if (NULL == ReserveAllocBigBlock) {
 		MacMsg(kStrOutOfMemTitle, kStrOutOfMemMessage, trueblnr);
