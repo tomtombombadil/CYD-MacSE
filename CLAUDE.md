@@ -53,4 +53,8 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
 - After a crash / watchdog / brown-out restart `main/crash_report.c` shows
   the core dump summary and least free stacks, and the saved disks stay
   out. Decode its addresses with the release's .elf (addr2line).
+- Logs on the card (`main/sdlog.c`): mac/log.txt, log-old.txt, crash.txt.
+  The PC can't see the card over USB: the USB port is the CH340 serial
+  chip and the S3's own USB pins (19/20) are the touch I2C. Tom reads the
+  card in a card reader.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

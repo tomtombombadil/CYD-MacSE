@@ -54,6 +54,11 @@ image file on the card. The emulator keeps its settings and the list of
 inserted disks in `mac\macse.txt` and puts those disks back in at the next
 start, so a Mac with its System disk in boots by itself.
 
+The board also writes its log to the card: `mac\log.txt` (this start),
+`mac\log-old.txt` (the start before) and, after a crash, `mac\crash.txt`.
+The board's USB port can't show the card to a PC (it is a serial chip),
+so to read them put the card in a card reader.
+
 ## Using it
 
 The Mac's screen is shown 1:1 (512x342) at the top middle, the keyboard

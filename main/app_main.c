@@ -3,6 +3,7 @@
 //   core 1: the emulated Mac
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -12,6 +13,7 @@
 #include "cyd_mac.h"
 #include "hal_esp.h"
 #include "panel.h"
+#include "sdlog.h"
 #include "touch_gt911.h"
 
 static const char* TAG = "macse";
@@ -33,7 +35,10 @@ static void ui_task(void* arg)
         const bool down = touch_read(&x, &y);
         ui_touch(down, x, y);
         if (++n % 3 == 0) ui_tick();
-        if (n % 100 == 0) crash_watch_tick();
+        if (n % 100 == 0) {
+            crash_watch_tick();
+            sdlog_flush();
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -42,6 +47,8 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "PSRAM free: %u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
     const bool sd = hal_esp_init();
+    if (sd) sdlog_init();
+    ESP_LOGI(TAG, "start, reset reason %d", (int)esp_reset_reason());
     const bool touch = touch_init();   // before the sound: its INT pin is the amp's LRCLK
     if (!panel_init()) return;
     // After a crash the saved disks stay out (one may be the cause)

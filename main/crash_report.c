@@ -20,6 +20,7 @@
 #include "audio.h"
 #include "canvas.h"
 #include "crash_report.h"
+#include "sdlog.h"
 #include "cyd_mac.h"
 #include "touch_gt911.h"
 
@@ -105,6 +106,12 @@ void crash_watch_tick(void)
     s_watch.uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
     s_watch.mac_ticks = g_emu.ticks;
     s_watch.drives = g_emu.drives;
+    static unsigned s_n;
+    if (++s_n % 10 == 0)
+        ESP_LOGI(TAG, "up %lu s, Mac ticks %lu, drives %lx, free internal %u, least stack audio %ld ui %ld mac %ld",
+                 (unsigned long)s_watch.uptime_s, (unsigned long)s_watch.mac_ticks, (unsigned long)s_watch.drives,
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (long)s_watch.free_stack[0],
+                 (long)s_watch.free_stack[1], (long)s_watch.free_stack[2]);
     check_memory("1 s check");
     for (int i = 0; i < 3; ++i) {
         if (!s_tasks[i]) continue;
@@ -191,6 +198,11 @@ bool crash_report_show(void)
     esp_core_dump_image_erase();
 
     for (int i = 0; i < n; ++i) ESP_LOGE(TAG, "%s", lines[i]);
+    {
+        const char* l[20];
+        for (int i = 0; i < n; ++i) l[i] = lines[i];
+        sdlog_crash(l, n);
+    }
 
     hal_lock();
     g_mac_blit_enabled = false;
