@@ -1,3 +1,6 @@
+# Web Flasher
+[CYD-MacSE Web Flasher for 5.0" S3 CYD](https://tomtombombadil.github.io/CYD-MacSE/)
+
 # CYD Mac SE
 
 A Macintosh SE emulator for the **Freenove 5.0" ESP32-S3 display**
