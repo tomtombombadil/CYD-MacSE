@@ -7,8 +7,8 @@
 //   y 342..479  keyboard, 4 rows
 //
 // Mouse (Tom, 2026-11-25): the Mac screen is a trackpad, as on a laptop.
-// Moving the finger / stylus moves the pointer by as much (relative, not
-// to the spot touched); a tap clicks where the pointer is; two taps
+// Moving the finger / stylus moves the pointer by 1.25 times as much
+// (relative, not to the spot touched); a tap clicks where the pointer is; two taps
 // double-click; touch and hold still (0.4 s) presses the button, and
 // moving then drags, until the touch lifts. A tap with the pointer on the
 // menu bar keeps the button held: move to the item, tap to choose it.
@@ -90,6 +90,7 @@ static int s_mx, s_my;        // last pointer position sent (Mac screen)
 static int s_bx, s_by;        // the pointer when the touch went down
 static uint64_t s_t0;         // when the touch went down
 static bool s_held;           // touch and hold: the button is down
+static int s_lx, s_ly;        // the touch's last place (mac_follow)
 #define HOLD_US 400000
 
 static uint32_t s_seen_changes;
@@ -647,8 +648,6 @@ static void click(void)
 
 static void mac_press(int x, int y)
 {
-    (void)x;
-    (void)y;
     s_press_mac = true;
     s_moving = false;
     s_held = false;
@@ -656,15 +655,24 @@ static void mac_press(int x, int y)
     if (s_mx < 0) mouse_mac(MAC_W / 2, MAC_H / 2);
     s_bx = s_mx;
     s_by = s_my;
+    s_lx = x;
+    s_ly = y;
 }
 
 // While the touch is down (every poll): trackpad moves, touch and hold
 static void mac_follow(int x, int y)
 {
+    // a reading far from the last one (100 px in 10 ms) is the touch
+    // chip's, not the finger's: skip it
+    if (abs(x - s_lx) > 100 || abs(y - s_ly) > 100) return;
+    s_lx = x;
+    s_ly = y;
     // a firm stylus wobbles: nothing moves until the touch clearly has
     if (!s_moving && (abs(x - s_px) > 6 || abs(y - s_py) > 6)) s_moving = true;
     if (s_moving) {
-        mouse_mac(s_bx + (x - s_px), s_by + (y - s_py));
+        // a little more pointer than finger (Tom: 1.1 to 1.25): more reach
+        // before the finger runs off the Mac screen
+        mouse_mac(s_bx + (x - s_px) * 5 / 4, s_by + (y - s_py) * 5 / 4);
     } else if (!s_held && s_hold == HOLD_NONE && hal_time_us() - s_t0 >= HOLD_US) {
         s_held = true;   // touch and hold: the button goes down
         button(true);

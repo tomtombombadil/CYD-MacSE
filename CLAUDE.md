@@ -12,7 +12,7 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
 - He does not want to repeat instructions: decisions go in this file.
 - He uses a stylus (Nintendo DS Lite), firm presses: taps, not drags; no
   confirmations; but the Mac screen is a **trackpad** (Tom, 2026-11-25:
-  "like 99% of all laptops"): slide moves the pointer relatively, tap
+  "like 99% of all laptops"): slide moves the pointer relatively (x 1.25, Tom), tap
   clicks, touch and hold presses (then slide drags); Title Case for buttons and menus; a handedness setting;
   sounds sparse.
 - Tom gave full permission to manage, push, post and release in this repo

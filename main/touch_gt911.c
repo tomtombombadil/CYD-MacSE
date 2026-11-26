@@ -85,9 +85,13 @@ bool touch_read(int* x, int* y)
     static bool s_last;
     static int s_x, s_y;
     if (!s_dev) return false;
+    // no new reading: the last one again, place too (0.1.14 left x / y
+    // unset here, so a held touch read as the corner 0,0 between readings)
+    *x = s_x;
+    *y = s_y;
     uint8_t st;
     if (!rd(0x814E, &st, 1)) return s_last;
-    if (!(st & 0x80)) return s_last;   // no new reading: as before
+    if (!(st & 0x80)) return s_last;
     const int n = st & 0x0F;
     if (n > 0) {
         uint8_t p[4];
