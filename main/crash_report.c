@@ -3,12 +3,14 @@
 // the core dump (flash partition "coredump"), and wait for a tap. The
 // caller then leaves the saved disks out, so a disk that crashes the
 // board doesn't do it again at every start.
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <esp_core_dump.h>
 #include <esp_log.h>
+#include <esp_attr.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -19,6 +21,33 @@
 #include "touch_gt911.h"
 
 static const char* TAG = "crash";
+
+// Kept over a restart (not over a power-off): the tasks' least free stack
+// seen, and how many crash restarts in a row
+#define WATCH_MAGIC 0x4D414353u
+typedef struct {
+    uint32_t magic;
+    uint32_t crashes;
+    uint32_t free_stack[3];   // audio, ui, mac: bytes, least seen
+} watch_t;
+static RTC_NOINIT_ATTR watch_t s_watch;
+static TaskHandle_t s_tasks[3];
+
+void crash_watch_tasks(TaskHandle_t audio, TaskHandle_t ui, TaskHandle_t mac)
+{
+    s_tasks[0] = audio;
+    s_tasks[1] = ui;
+    s_tasks[2] = mac;
+}
+
+void crash_watch_tick(void)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (!s_tasks[i]) continue;
+        const uint32_t f = (uint32_t)uxTaskGetStackHighWaterMark(s_tasks[i]);
+        if (f < s_watch.free_stack[i]) s_watch.free_stack[i] = f;
+    }
+}
 
 static const char* reason_text(esp_reset_reason_t r)
 {
@@ -36,15 +65,25 @@ bool crash_report_show(void)
 {
     const esp_reset_reason_t r = esp_reset_reason();
     const char* why = reason_text(r);
+    const bool valid = s_watch.magic == WATCH_MAGIC && (r == ESP_RST_SW || why);
+    const watch_t last = s_watch;
+    s_watch.magic = WATCH_MAGIC;
+    s_watch.crashes = why ? (valid ? last.crashes : 0) + 1 : 0;
+    for (int i = 0; i < 3; ++i) s_watch.free_stack[i] = UINT32_MAX;
     if (!why) {
         esp_core_dump_image_erase();   // an old one, from before a normal start
         return false;
     }
 
-    char lines[12][96];
+    char lines[14][96];
     int n = 0;
     snprintf(lines[n++], 96, "The board restarted after %s.", why);
-    snprintf(lines[n++], 96, "Firmware %s", APP_VERSION);
+    snprintf(lines[n++], 96, "Firmware %s, crash %lu in a row", APP_VERSION, (unsigned long)s_watch.crashes);
+    if (valid)
+        snprintf(lines[n++], 96, "Least free stack: audio %ld, ui %ld, mac %ld",
+                 last.free_stack[0] == UINT32_MAX ? -1L : (long)last.free_stack[0],
+                 last.free_stack[1] == UINT32_MAX ? -1L : (long)last.free_stack[1],
+                 last.free_stack[2] == UINT32_MAX ? -1L : (long)last.free_stack[2]);
 
     esp_core_dump_summary_t* s = calloc(1, sizeof *s);
     if (s && ESP_OK == esp_core_dump_image_check() && ESP_OK == esp_core_dump_get_summary(s)) {
@@ -54,7 +93,7 @@ bool crash_report_show(void)
                  (unsigned long)s->ex_info.exc_cause, (unsigned long)s->ex_info.exc_vaddr);
 #endif
         const int depth = s->exc_bt_info.depth < 16 ? (int)s->exc_bt_info.depth : 16;
-        for (int i = 0; i < depth && n < 10; i += 4) {
+        for (int i = 0; i < depth && n < 12; i += 4) {
             char* p = lines[n++];
             p[0] = 0;
             for (int j = i; j < i + 4 && j < depth; ++j)
@@ -77,13 +116,14 @@ bool crash_report_show(void)
     y += 12;
     cv_text_fit(MAC_X + 24, y, MAC_W - 48, "Please send a photo of this screen.", CV_BLACK);
     cv_text_fit(MAC_X + 24, y + 20, MAC_W - 48, "The disks were not put back in.", CV_BLACK);
-    cv_text_center(MAC_X, MAC_Y + MAC_H - 40, MAC_W, 20, "Tap to go on", CV_BLACK);
+    cv_text_center(MAC_X, MAC_Y + MAC_H - 40, MAC_W, 20, "Tap to go on (or wait 30 seconds)", CV_BLACK);
     hal_unlock();
 
-    // A tap anywhere: down, then up
+    // A tap anywhere (down, then up), or 30 seconds
     int x, yy;
-    while (!touch_read(&x, &yy)) vTaskDelay(pdMS_TO_TICKS(20));
-    while (touch_read(&x, &yy)) vTaskDelay(pdMS_TO_TICKS(20));
+    int t = 0;
+    while (!touch_read(&x, &yy) && t < 1500) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
+    while (touch_read(&x, &yy) && t < 1500) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
 
     hal_lock();
     cv_fill(MAC_X, MAC_Y, MAC_W, MAC_H, CV_WHITE);

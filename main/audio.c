@@ -11,6 +11,7 @@
 
 static const char* TAG = "audio";
 static i2s_chan_handle_t s_tx;
+TaskHandle_t g_audio_task;
 #define CHUNK 256
 
 static void audio_task(void* arg)
@@ -54,6 +55,6 @@ bool audio_init(void)
         ESP_LOGE(TAG, "I2S start failed: %s", esp_err_to_name(err));
         return false;
     }
-    xTaskCreatePinnedToCore(audio_task, "audio", 4096, NULL, 6, NULL, 0);
+    xTaskCreatePinnedToCore(audio_task, "audio", 8192, NULL, 6, &g_audio_task, 0);
     return true;
 }

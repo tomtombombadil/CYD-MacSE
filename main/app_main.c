@@ -33,6 +33,7 @@ static void ui_task(void* arg)
         const bool down = touch_read(&x, &y);
         ui_touch(down, x, y);
         if (++n % 3 == 0) ui_tick();
+        if (n % 100 == 0) crash_watch_tick();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -57,6 +58,9 @@ void app_main(void)
     }
     if (!touch) ESP_LOGE(TAG, "no touch");
     audio_init();
-    xTaskCreatePinnedToCore(ui_task, "ui", 6144, NULL, 5, NULL, 0);
-    if (sd) xTaskCreatePinnedToCore(emu_task, "mac", 16384, NULL, 4, NULL, 1);
+    TaskHandle_t ui = NULL, mac = NULL;
+    if (sd) xTaskCreatePinnedToCore(emu_task, "mac", 16384, NULL, 4, &mac, 1);
+    crash_watch_tasks(g_audio_task, NULL, mac);
+    xTaskCreatePinnedToCore(ui_task, "ui", 6144, NULL, 5, &ui, 0);
+    crash_watch_tasks(g_audio_task, ui, mac);
 }

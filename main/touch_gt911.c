@@ -92,8 +92,11 @@ bool touch_read(int* x, int* y)
     if (n > 0) {
         uint8_t p[4];
         if (rd(0x8150, p, 4)) {
-            s_x = p[0] | (p[1] << 8);
-            s_y = p[2] | (p[3] << 8);
+            // the picture is turned 180 degrees (panel.c): so is touch
+            s_x = BOARD_W - 1 - (p[0] | (p[1] << 8));
+            s_y = BOARD_H - 1 - (p[2] | (p[3] << 8));
+            if (s_x < 0) s_x = 0;
+            if (s_y < 0) s_y = 0;
         }
     }
     wr8(0x814E, 0);

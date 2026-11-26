@@ -32,6 +32,9 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
 - Screen: Mac 512x342 1:1 at x 144, y 0; keyboard (4 rows) below; side
   panels: tools (Disks, Drag, Double Click, status, Settings) and Mac keys
   (Command, Option, Control, Space, Enter, arrows); Left Handed swaps them.
+- The picture and touch are turned **180 degrees** (Tom, 2026-11-25):
+  `panel.c` sends the canvas backwards, `touch_gt911.c` flips x / y. The
+  canvas itself and all UI code stay upright.
 - Firmware file prefix `CYD-MacSE_`; boards named by size, driver, touch.
 
 ## Architecture
@@ -47,4 +50,7 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   v0.26.0's lesson).
 - Cores: core 0 the panel interrupt, UI / touch (10 ms poll), sound;
   core 1 the Mac (no idle watchdog there).
+- After a crash / watchdog / brown-out restart `main/crash_report.c` shows
+  the core dump summary and least free stacks, and the saved disks stay
+  out. Decode its addresses with the release's .elf (addr2line).
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

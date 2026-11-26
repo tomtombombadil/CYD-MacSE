@@ -22,19 +22,23 @@ static const char* TAG = "panel";
 
 DRAM_ATTR uint8_t g_canvas[CANVAS_H * CANVAS_STRIDE];
 
-// one canvas byte -> 8 pixels (16 bytes): white 0xFFFF, black 0x0000
+// one canvas byte -> 8 pixels (16 bytes): white 0xFFFF, black 0x0000.
+// The picture is turned 180 degrees (Tom, 2026-11-25: the board stands
+// the other way up), so a byte's pixels go out right to left.
 static DRAM_ATTR uint32_t s_expand[256][4];
 
 static IRAM_ATTR bool refill(esp_lcd_panel_handle_t panel, void* bounce_buf, int pos_px, int len_bytes, void* ctx)
 {
     (void)panel;
     (void)ctx;
-    const uint8_t* src = &g_canvas[pos_px >> 3];
-    uint32_t* dst = (uint32_t*)bounce_buf;
+    // panel pixel p shows canvas pixel (W*H - 1 - p): bytes backwards
+    const int first = pos_px >> 3;
     int n = len_bytes >> 4;   // canvas bytes
-    if ((pos_px >> 3) + n > (int)sizeof g_canvas) n = (int)sizeof g_canvas - (pos_px >> 3);
+    if (first + n > (int)sizeof g_canvas) n = (int)sizeof g_canvas - first;
+    const uint8_t* src = &g_canvas[sizeof g_canvas - 1 - first];
+    uint32_t* dst = (uint32_t*)bounce_buf;
     while (n-- > 0) {
-        const uint32_t* e = s_expand[*src++];
+        const uint32_t* e = s_expand[*src--];
         dst[0] = e[0];
         dst[1] = e[1];
         dst[2] = e[2];
@@ -48,9 +52,10 @@ bool panel_init(void)
 {
     for (int b = 0; b < 256; ++b)
         for (int i = 0; i < 4; ++i) {
-            // pixels 2i (low half-word: first in memory) and 2i+1
-            const uint32_t p0 = (b & (0x80 >> (2 * i))) ? 0x0000 : 0xFFFF;
-            const uint32_t p1 = (b & (0x40 >> (2 * i))) ? 0x0000 : 0xFFFF;
+            // pixels 2i (low half-word: first in memory) and 2i+1, from
+            // the byte's last bit (its rightmost pixel) back: 180 degrees
+            const uint32_t p0 = (b & (0x01 << (2 * i))) ? 0x0000 : 0xFFFF;
+            const uint32_t p1 = (b & (0x02 << (2 * i))) ? 0x0000 : 0xFFFF;
             s_expand[b][i] = p0 | (p1 << 16);
         }
     memset(g_canvas, 0, sizeof g_canvas);
