@@ -7,6 +7,7 @@
 #include <freertos/task.h>
 
 #include "board.h"
+#include "crash_report.h"
 #include "cyd_mac.h"
 
 static const char* TAG = "audio";
@@ -20,11 +21,13 @@ static void audio_task(void* arg)
     uint8_t in[CHUNK];
     int16_t out[CHUNK];
     for (;;) {
+        crash_check_audio_stack("audio's own work");
         emu_audio_pull(in, CHUNK);
         const bool on = g_emu.sound_on;
         for (int i = 0; i < CHUNK; ++i) out[i] = on ? (int16_t)(((int)in[i] - 128) * 96) : 0;
         size_t done = 0;
         i2s_channel_write(s_tx, out, sizeof out, &done, portMAX_DELAY);   // paces the loop
+        crash_check_audio_stack("while audio waited");
     }
 }
 

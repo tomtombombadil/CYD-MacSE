@@ -10,6 +10,7 @@
 
 #include <esp_core_dump.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <esp_log.h>
 #include <esp_attr.h>
 #include <esp_system.h>
@@ -34,6 +35,10 @@ typedef struct {
     uint32_t io_n;            // disk transfers since the start
     uint32_t io_write, io_start, io_count, io_buf;   // the last one
     char note[64];            // what a check found, before it stopped the board
+    uint32_t uptime_s, mac_ticks, drives;   // at the last 1 s check
+    uint32_t trap_addr;       // the audio stack's end, when found overwritten
+    uint8_t trap[32];         // its first 32 bytes then
+    uint32_t trap_bad;        // how many of its first 1024 bytes were not 0xA5
 } watch_t;
 static RTC_NOINIT_ATTR watch_t s_watch;
 static TaskHandle_t s_tasks[3];
@@ -66,6 +71,25 @@ static void check_memory(const char* when)
     }
 }
 
+// From the audio task, every 256 samples: its own stack's end (FreeRTOS
+// fills it with 0xA5; its overflow check looks at the first 20 bytes)
+void crash_check_audio_stack(const char* when)
+{
+    const uint8_t* end = pxTaskGetStackStart(NULL);
+    if (!end) return;
+    bool ok = true;
+    for (int i = 0; i < 32; ++i) ok &= end[i] == 0xA5;
+    if (ok) return;
+    s_watch.trap_addr = (uint32_t)(uintptr_t)end;
+    memcpy(s_watch.trap, end, 32);
+    uint32_t bad = 0;
+    for (int i = 0; i < 1024; ++i) bad += end[i] != 0xA5;
+    s_watch.trap_bad = bad;
+    char what[64];
+    snprintf(what, sizeof what, "Audio stack end overwritten (%s)", when);
+    stop_with(what);
+}
+
 void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const void* buf)
 {
     s_watch.io_n++;
@@ -78,6 +102,9 @@ void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const vo
 
 void crash_watch_tick(void)
 {
+    s_watch.uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
+    s_watch.mac_ticks = g_emu.ticks;
+    s_watch.drives = g_emu.drives;
     check_memory("1 s check");
     for (int i = 0; i < 3; ++i) {
         if (!s_tasks[i]) continue;
@@ -109,12 +136,14 @@ bool crash_report_show(void)
     for (int i = 0; i < 3; ++i) s_watch.free_stack[i] = UINT32_MAX;
     s_watch.io_n = 0;
     s_watch.note[0] = 0;
+    s_watch.trap_addr = 0;
+    s_watch.uptime_s = s_watch.mac_ticks = s_watch.drives = 0;
     if (!why) {
         esp_core_dump_image_erase();   // an old one, from before a normal start
         return false;
     }
 
-    char lines[16][96];
+    char lines[20][96];
     int n = 0;
     snprintf(lines[n++], 96, "The board restarted after %s.", why);
     snprintf(lines[n++], 96, "Firmware %s, crash %lu in a row", APP_VERSION, (unsigned long)s_watch.crashes);
@@ -124,7 +153,19 @@ bool crash_report_show(void)
                  last.free_stack[1] == UINT32_MAX ? -1L : (long)last.free_stack[1],
                  last.free_stack[2] == UINT32_MAX ? -1L : (long)last.free_stack[2]);
 
+    if (valid)
+        snprintf(lines[n++], 96, "Up %lu s, Mac ticks %lu, drives %lx", (unsigned long)last.uptime_s,
+                 (unsigned long)last.mac_ticks, (unsigned long)last.drives);
     if (valid && last.note[0]) snprintf(lines[n++], 96, "%.60s", last.note);
+    if (valid && last.trap_addr) {
+        snprintf(lines[n++], 96, "At %08lx, %lu of 1024 bytes changed:", (unsigned long)last.trap_addr,
+                 (unsigned long)last.trap_bad);
+        for (int h = 0; h < 2; ++h) {
+            char* p = lines[n++];
+            p[0] = 0;
+            for (int i = 0; i < 16; ++i) snprintf(p + strlen(p), 96 - strlen(p), "%02x", last.trap[h * 16 + i]);
+        }
+    }
     if (valid && last.io_n)
         snprintf(lines[n++], 96, "Disk I/O %lu, last: %s %lu bytes at %lu, buf %08lx", (unsigned long)last.io_n,
                  last.io_write ? "write" : "read", (unsigned long)last.io_count, (unsigned long)last.io_start,
@@ -137,7 +178,7 @@ bool crash_report_show(void)
                  (unsigned long)s->ex_info.exc_cause, (unsigned long)s->ex_info.exc_vaddr);
 #endif
         const int depth = s->exc_bt_info.depth < 16 ? (int)s->exc_bt_info.depth : 16;
-        for (int i = 0; i < depth && n < 14; i += 4) {
+        for (int i = 0; i < depth && n < 18; i += 4) {
             char* p = lines[n++];
             p[0] = 0;
             for (int j = i; j < i + 4 && j < depth; ++j)
@@ -156,7 +197,7 @@ bool crash_report_show(void)
     cv_fill(MAC_X, MAC_Y, MAC_W, MAC_H, CV_WHITE);
     cv_frame(MAC_X + 8, MAC_Y + 8, MAC_W - 16, MAC_H - 16, CV_BLACK);
     int y = MAC_Y + 24;
-    for (int i = 0; i < n; ++i, y += 18) cv_text_fit(MAC_X + 24, y, MAC_W - 48, lines[i], CV_BLACK);
+    for (int i = 0; i < n; ++i, y += 16) cv_text_fit(MAC_X + 24, y, MAC_W - 48, lines[i], CV_BLACK);
     y += 6;
     cv_text_fit(MAC_X + 24, y, MAC_W - 48, "Please send a photo of this screen.", CV_BLACK);
     cv_text_fit(MAC_X + 24, y + 18, MAC_W - 48, "The disks were not put back in.", CV_BLACK);

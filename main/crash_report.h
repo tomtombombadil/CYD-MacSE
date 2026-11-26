@@ -13,3 +13,5 @@ void crash_watch_tasks(TaskHandle_t audio, TaskHandle_t ui, TaskHandle_t mac);
 void crash_watch_tick(void);
 // After each disk transfer: note it, check the heap and the audio stack
 void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const void* buf);   // about once a second
+// From the audio task: stop with a note if its stack's end was overwritten
+void crash_check_audio_stack(const char* when);
