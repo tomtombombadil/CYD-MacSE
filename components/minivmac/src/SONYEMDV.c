@@ -282,6 +282,9 @@ LOCALPROC Drive_UpdateChecksums(tDrive Drive_No)
 
 #define checkheaderblocks 64
 
+#include <stddef.h>
+void *hal_big_calloc(size_t n); /* CYD glue (cyd_mac.h): PSRAM */
+
 #define checkheaderoffset 0
 #if NonDiskProtect
 #define checkheadersize (checkheaderblocks * 512)
@@ -314,7 +317,13 @@ LOCALFUNC tMacErr vSonyNextPendingInsert(tDrive *Drive_No)
 			if (! vSonyRawMode)
 #endif
 			{
-				ui3b Temp[checkheadersize];
+				/*
+					CYD: 32 KB is twice the Mac task's whole stack
+					(16 KB): on the stack it wrote over the memory
+					below it (the crashes of 0.1.0-0.1.12). Off the
+					stack, made once.
+				*/
+				static ui3b *Temp = nullpr;
 				ui5r Sony_Count = checkheadersize;
 				blnr gotFormat = falseblnr;
 
@@ -324,6 +333,11 @@ LOCALFUNC tMacErr vSonyNextPendingInsert(tDrive *Drive_No)
 					result = -1;
 				} else
 #endif
+				if ((nullpr == Temp) && (nullpr ==
+					(Temp = (ui3b *)hal_big_calloc(checkheadersize))))
+				{
+					result = mnvm_miscErr;
+				} else
 				if (mnvm_noErr == (result = vSonyTransfer(falseblnr,
 					Temp, i, checkheaderoffset, Sony_Count, nullpr)))
 				{

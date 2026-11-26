@@ -7,6 +7,9 @@ make -s
 D=$(mktemp -d)
 python3 ../tools/make_test_rom.py "$D/MacSE.ROM"
 head -c 819200 /dev/zero > "$D/blank.dsk"
+# a disk in at the start: its first read (a 32 KB header check) once
+# overran the board's 16 KB Mac stack; the runner's Mac thread has 32 KB
+printf 'disk=%s\n' "$D/blank.dsk" > "$D/macse.txt"
 ./macse_host "$D" wait:1000 shot:"$D/run.pbm" tap:72,30 wait:200 shot:"$D/disks.pbm" | tee "$D/out.txt"
 python3 - "$D" <<'PY'
 import sys
@@ -22,6 +25,7 @@ out = open(d + "/out.txt").read()
 ticks = int(out.split("ticks ")[1].split(",")[0])
 assert 65 <= ticks <= 95, out          # 60.15 ticks a second over the 1.3 s run
 assert "rom 1" in out, out
+assert "drives 1" in out, out
 disks = load("disks.pbm")
 assert disks != run                     # the Disks page drew
 print("host test OK:", ticks, "ticks in 1.3 s")

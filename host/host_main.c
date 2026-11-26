@@ -52,7 +52,13 @@ int main(int argc, char** argv)
     hal_host_set_dir(argv[1]);
     ui_init(true);
     pthread_t th;
-    pthread_create(&th, NULL, emu_thread, NULL);
+    // The board's Mac task has 16 KB of stack: the PC gets no more (with
+    // room for the C library's own use), so a big stack buffer fails here
+    // too (0.1.0-0.1.12: a 32 KB one, fine with Linux's 8 MB stacks)
+    pthread_attr_t at;
+    pthread_attr_init(&at);
+    pthread_attr_setstacksize(&at, 16384 + 16384);
+    pthread_create(&th, &at, emu_thread, NULL);
     int x = 0, y = 0;
     for (int i = 2; i < argc; ++i) {
         const char* a = argv[i];

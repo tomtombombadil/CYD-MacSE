@@ -24,6 +24,8 @@
 
 #include <stdatomic.h>
 #include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "cyd_mac.h"
 
@@ -105,7 +107,9 @@ LOCALVAR blnr DriveDirty[NumDrives];
 	(0.1.12: every crash so far came between a disk going in and its first
 	transfer finishing). Writes go to the copy and on to the card.
 */
+#ifndef DriveCacheMax
 #define DriveCacheMax (2 * 1024 * 1024)
+#endif
 LOCALVAR ui3p DriveCache[NumDrives];
 
 LOCALPROC InitDrives(void)
@@ -130,6 +134,23 @@ LOCALPROC InitDrives(void)
 #define DiskBounceSz 4096
 static ui3b DiskBounce[DiskBounceSz] __attribute__((aligned(64)));
 
+/*
+	Straight to the file system, not stdio: the CYD's C library reads an
+	unbuffered stream a byte at a time (0.1.12 took 35 s for a floppy).
+	Bytes read or written at pos into / from DiskBounce, n <= its size.
+*/
+LOCALFUNC size_t DiskIO(FILE *f, blnr IsWrite, ui5r pos, size_t n)
+{
+	int fd = fileno(f);
+	ssize_t r;
+
+	if ((off_t)pos != lseek(fd, (off_t)pos, SEEK_SET)) {
+		return 0;
+	}
+	r = IsWrite ? write(fd, DiskBounce, n) : read(fd, DiskBounce, n);
+	return (r > 0) ? (size_t)r : 0;
+}
+
 GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 	tDrive Drive_No, ui5r Sony_Start, ui5r Sony_Count,
 	ui5r *Sony_ActCount)
@@ -139,6 +160,8 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 	ui5r NewSony_Count = 0;
 
 	hal_trail(IsWrite ? 'w' : 'r', Sony_Start);
+	hal_trail('k', Sony_Count);
+	hal_trail('b', (uint32_t)(uintptr_t)Buffer);
 	if ((nullpr != DriveCache[Drive_No])
 		&& (Sony_Start <= DriveSize[Drive_No])
 		&& (Sony_Count <= DriveSize[Drive_No] - Sony_Start))
@@ -159,10 +182,10 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 
 	hal_fs_lock();
 	if ((Sony_Start <= DriveSize[Drive_No])
-		&& (Sony_Count <= DriveSize[Drive_No] - Sony_Start)
-		&& (0 == fseek(refnum, (long)(DriveOffset[Drive_No] + Sony_Start),
-			SEEK_SET)))
+		&& (Sony_Count <= DriveSize[Drive_No] - Sony_Start))
 	{
+		ui5r pos = DriveOffset[Drive_No] + Sony_Start;
+
 		while (NewSony_Count < Sony_Count) {
 			ui5r n = Sony_Count - NewSony_Count;
 			size_t got;
@@ -172,10 +195,10 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 			}
 			if (IsWrite) {
 				memcpy(DiskBounce, Buffer + NewSony_Count, n);
-				got = fwrite(DiskBounce, 1, n, refnum);
+				got = DiskIO(refnum, trueblnr, pos + NewSony_Count, n);
 				DriveDirty[Drive_No] = trueblnr;
 			} else {
-				got = fread(DiskBounce, 1, n, refnum);
+				got = DiskIO(refnum, falseblnr, pos + NewSony_Count, n);
 				memcpy(Buffer + NewSony_Count, DiskBounce, got);
 			}
 			NewSony_Count += (ui5r)got;
@@ -284,7 +307,7 @@ LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 	ui5r n = 1;
 	ui5r i;
 
-	if ((0 != fseek(f, 0, SEEK_SET)) || (512 != fread(DiskBounce, 1, 512, f))) {
+	if (512 != DiskIO(f, falseblnr, 0, 512)) {
 		return falseblnr;
 	}
 	if ((b[0] != 'E') || (b[1] != 'R')) {
@@ -297,8 +320,7 @@ LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 		}
 	}
 	for (i = 1; (i <= n) && (i < 64); ++i) {
-		if ((0 != fseek(f, (long)(i * 512), SEEK_SET))
-			|| (512 != fread(DiskBounce, 1, 512, f))
+		if ((512 != DiskIO(f, falseblnr, i * 512, 512))
 			|| (b[0] != 'P') || (b[1] != 'M'))
 		{
 			break;
@@ -325,7 +347,7 @@ LOCALFUNC ui3p ReadWholeImage(FILE *f, ui5r L)
 	ui3p p;
 	ui5r done = 0;
 
-	if ((L > DriveCacheMax) || (0 != fseek(f, 0, SEEK_SET))) {
+	if (L > DriveCacheMax) {
 		return nullpr;
 	}
 	p = (ui3p)hal_big_calloc(L);
@@ -339,7 +361,7 @@ LOCALFUNC ui3p ReadWholeImage(FILE *f, ui5r L)
 		if (n > DiskBounceSz) {
 			n = DiskBounceSz;
 		}
-		got = fread(DiskBounce, 1, n, f);
+		got = DiskIO(f, falseblnr, done, n);
 		memcpy(p + done, DiskBounce, got);
 		done += (ui5r)got;
 		if (got != n) {

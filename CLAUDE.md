@@ -91,4 +91,13 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   to the card. FindHFSPartition reads through DiskBounce (it read into a
   stack buffer: the SD driver's bounce malloc, where 0.1.7 asserted).
   `hal_trail` keeps the disk steps in RTC memory for the crash report.
+  **Found (0.1.13):** SONYEMDV.c's format check put `Temp[32768]` (64
+  blocks, NonDiskProtect) on the stack; the Mac task has 16 KB, so the
+  first read of every disk wrote 16 KB of disk data over the memory below
+  the stack (the 1 KB of zeros, heap damage, wild PCs). Now one PSRAM
+  buffer. The host runner's Mac thread has a 32 KB stack and host/test.sh
+  inserts a disk, so a big stack buffer segfaults on the PC too. Lesson:
+  the PC's 8 MB stacks hide stack overruns; match the board's stack.
+  Disk I/O goes through read()/write() on fileno (newlib reads an
+  unbuffered stdio stream a byte at a time).
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.
