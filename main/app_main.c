@@ -14,6 +14,7 @@
 #include "hal_esp.h"
 #include "panel.h"
 #include "sdlog.h"
+#include "wifi_web.h"
 #include "touch_gt911.h"
 
 static const char* TAG = "macse";
@@ -49,6 +50,7 @@ void app_main(void)
     const bool sd = hal_esp_init();
     if (sd) sdlog_init();
     ESP_LOGI(TAG, "start, reset reason %d", (int)esp_reset_reason());
+    if (sd) g_wifi_on = wifi_web_start();   // the log page, if mac\wifi.txt says how
     const bool touch = touch_init();   // before the sound: its INT pin is the amp's LRCLK
     if (!panel_init()) return;
     // After a crash the saved disks stay out (one may be the cause)

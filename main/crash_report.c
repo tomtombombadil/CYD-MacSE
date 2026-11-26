@@ -219,7 +219,20 @@ bool crash_report_show(void)
     // A tap anywhere (down, then up), or 30 seconds
     int x, yy;
     int t = 0;
-    while (!touch_read(&x, &yy) && t < 1500) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
+    bool shown = false;
+    while (!touch_read(&x, &yy) && t < 1500) {
+        const char* a = hal_net_address();
+        if (!shown && a && a[0]) {
+            char l[64];
+            snprintf(l, sizeof l, "Or open http://%s/ and copy the page.", a);
+            hal_lock();
+            cv_text_center(MAC_X, MAC_Y + MAC_H - 62, MAC_W, 20, l, CV_BLACK);
+            hal_unlock();
+            shown = true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+        ++t;
+    }
     while (touch_read(&x, &yy) && t < 1500) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
 
     hal_lock();

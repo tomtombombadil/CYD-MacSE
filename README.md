@@ -56,8 +56,19 @@ start, so a Mac with its System disk in boots by itself.
 
 The board also writes its log to the card: `mac\log.txt` (this start),
 `mac\log-old.txt` (the start before) and, after a crash, `mac\crash.txt`.
-The board's USB port can't show the card to a PC (it is a serial chip),
-so to read them put the card in a card reader.
+
+To read them from a PC without taking the card out, put a file named
+`wifi.txt` in the `mac` folder with your Wi-Fi's name and password:
+
+```
+ssid=MyNetwork
+password=MyPassword
+```
+
+The board then joins that Wi-Fi and shows the logs at a web address on
+your network. Settings and the crash screen show the address (for example
+`http://192.168.1.23/`); your router may also know it as
+`http://cyd-macse/`. Delete `wifi.txt` to keep Wi-Fi off.
 
 ## Using it
 

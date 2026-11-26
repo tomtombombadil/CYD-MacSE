@@ -45,3 +45,7 @@ CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 # watchpoint), and a write past a heap block when it is freed
 CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
 CONFIG_HEAP_POISONING_LIGHT=y
+
+# Wi-Fi (the log page) stays on core 0: core 1 is the Mac's
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

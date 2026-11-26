@@ -16,6 +16,7 @@
 #include "cyd_mac.h"
 #include "crash_report.h"
 #include "hal_esp.h"
+#include "wifi_web.h"
 
 static const char* TAG = "sd";
 static SemaphoreHandle_t s_lock;
@@ -36,6 +37,9 @@ const char* const* hal_dirs(void) { return s_dirs; }
 int64_t hal_unix_time(void) { return 0; }   // no clock on the board
 
 void hal_sync_file(void* f) { fsync(fileno((FILE*)f)); }
+
+bool g_wifi_on;
+const char* hal_net_address(void) { return g_wifi_on ? wifi_web_address() : NULL; }
 
 void hal_after_disk_io(int is_write, uint32_t start, uint32_t count, const void* mac_buf)
 {

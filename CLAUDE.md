@@ -55,6 +55,10 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   out. Decode its addresses with the release's .elf (addr2line).
 - Logs on the card (`main/sdlog.c`): mac/log.txt, log-old.txt, crash.txt.
   The PC can't see the card over USB: the USB port is the CH340 serial
-  chip and the S3's own USB pins (19/20) are the touch I2C. Tom reads the
-  card in a card reader.
+  chip and the S3's own USB pins (19/20) are the touch I2C. Tom chose
+  (2026-11-25) a **web page on the board** instead of pulling the card:
+  `main/wifi_web.c` joins the Wi-Fi in mac/wifi.txt (ssid=, password=)
+  and serves the three logs as plain text at http://<address>/ (shown in
+  Settings and on the crash screen; hostname cyd-macse). Wi-Fi and its
+  tasks on core 0. Not a GitHub upload (he declined it).
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

@@ -446,6 +446,13 @@ static void draw_settings_page(void)
     page_btn(x + 200, y, 90, 38, B_RESTART, "Restart", false);
     y += 56;
     cv_text(x, y, "ROM: MacSE.ROM, disks: the mac folder on the SD card.", CV_BLACK);
+    {
+        char line[64];
+        const char* a = hal_net_address();
+        if (a && a[0]) snprintf(line, sizeof line, "Log page: http://%s/", a);
+        else snprintf(line, sizeof line, "Log page: %s", a ? "joining Wi-Fi..." : "no wifi.txt on the card");
+        cv_text(x, y + 22, line, CV_BLACK);
+    }
     page_btn(MAC_X + MAC_W - 128, MAC_Y + MAC_H - 44, 120, 38, B_BACK, "Back", false);
 }
 
