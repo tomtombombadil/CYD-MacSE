@@ -58,6 +58,9 @@ void hal_sync_file(void* stdio_file);
 const char* hal_net_address(void);
 // After each disk image read / write (the CYD checks its memory there)
 void hal_after_disk_io(int is_write, uint32_t start, uint32_t count, const void* mac_buf);
+// A step of the disk code, kept over a crash restart (the CYD's crash
+// report lists the last ones): a letter and a number
+void hal_trail(char step, uint32_t arg);
 
 // ---- UI -> emulator events ----
 enum {

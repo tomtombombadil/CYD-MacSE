@@ -82,5 +82,13 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   0.1.10 still: interrupt watchdog at tick 90, jittery picture. 0.1.11:
   I2S auto_clear off (its ISR zeroing a 1 KB buffer: prime suspect for
   the 1 KB of zeros), no heap walks (they ran with interrupts off), light
-  poisoning, SD max_transfer_sz 4096, panel interrupt on core 1.
+  poisoning, SD max_transfer_sz 4096, panel interrupt on core 1. Still
+  crashed (mac PC 7ffffffc), also ~1 s after a tap on a disk; no report
+  has ever shown a finished disk transfer, so it dies between insert and
+  the first transfer. A 32-bit host build (gcc -m32 + ASan) boots fine.
+  0.1.12: images up to 2 MB are read whole into PSRAM at insert (through
+  DiskBounce, like the ROM) and the Mac's reads are copies; writes go on
+  to the card. FindHFSPartition reads through DiskBounce (it read into a
+  stack buffer: the SD driver's bounce malloc, where 0.1.7 asserted).
+  `hal_trail` keeps the disk steps in RTC memory for the crash report.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

@@ -43,6 +43,8 @@ typedef struct {
     uint8_t trap[32];         // its first 32 bytes then
     int64_t wall;             // the clock at the last 1 s check (0: not set)
     uint32_t trap_bad;        // how many of its first 1024 bytes were not 0xA5
+    uint32_t trail_n;         // disk code steps (hal_trail) since the start
+    struct { uint32_t tick; uint32_t arg; char step; } trail[12];   // the last ones
 } watch_t;
 static RTC_NOINIT_ATTR watch_t s_watch;
 static TaskHandle_t s_tasks[3];
@@ -52,6 +54,15 @@ void crash_watch_tasks(TaskHandle_t audio, TaskHandle_t ui, TaskHandle_t mac)
     s_tasks[0] = audio;
     s_tasks[1] = ui;
     s_tasks[2] = mac;
+}
+
+// The disk code's steps (osglu_cyd.c): the last 12, for the next report
+void hal_trail(char step, uint32_t arg)
+{
+    const uint32_t i = s_watch.trail_n++ % 12;
+    s_watch.trail[i].tick = g_emu.ticks;
+    s_watch.trail[i].arg = arg;
+    s_watch.trail[i].step = step;
 }
 
 // Stop the board with a note for the next start's report
@@ -154,6 +165,7 @@ bool crash_report_show(void)
     s_watch.crashes = why ? (valid ? last.crashes : 0) + 1 : 0;
     for (int i = 0; i < 3; ++i) s_watch.free_stack[i] = UINT32_MAX;
     s_watch.io_n = 0;
+    s_watch.trail_n = 0;
     s_watch.note[0] = 0;
     s_watch.trap_addr = 0;
     s_watch.uptime_s = s_watch.mac_ticks = s_watch.drives = 0;
@@ -163,7 +175,7 @@ bool crash_report_show(void)
         return false;
     }
 
-    char lines[20][96];
+    char lines[24][96];
     int n = 0;
     snprintf(lines[n++], 96, "The board restarted after %s.", why);
     snprintf(lines[n++], 96, "Firmware %s, crash %lu in a row", APP_VERSION, (unsigned long)s_watch.crashes);
@@ -198,6 +210,21 @@ bool crash_report_show(void)
         snprintf(lines[n++], 96, "Disk I/O %lu, last: %s %lu bytes at %lu, buf %08lx", (unsigned long)last.io_n,
                  last.io_write ? "write" : "read", (unsigned long)last.io_count, (unsigned long)last.io_start,
                  (unsigned long)last.io_buf);
+    if (valid && last.trail_n) {
+        // Disk steps, oldest first: o open, f opened, s size, h volume at,
+        // c read into memory, n Mac told, r / w transfer from, d done, e out
+        const uint32_t k = last.trail_n < 12 ? last.trail_n : 12;
+        snprintf(lines[n++], 96, "Disk steps (%lu), letter tick:number:", (unsigned long)last.trail_n);
+        for (uint32_t h = 0; h < k; h += 4) {
+            char* p = lines[n++];
+            p[0] = 0;
+            for (uint32_t j = h; j < h + 4 && j < k; ++j) {
+                const uint32_t i = (last.trail_n - k + j) % 12;
+                snprintf(p + strlen(p), 96 - strlen(p), "%c %lu:%lu  ", last.trail[i].step,
+                         (unsigned long)last.trail[i].tick, (unsigned long)last.trail[i].arg);
+            }
+        }
+    }
     esp_core_dump_summary_t* s = calloc(1, sizeof *s);
     if (s && ESP_OK == esp_core_dump_image_check() && ESP_OK == esp_core_dump_get_summary(s)) {
         snprintf(lines[n++], 96, "Task %.16s, PC %08lx", s->exc_task, (unsigned long)s->exc_pc);
@@ -206,7 +233,7 @@ bool crash_report_show(void)
                  (unsigned long)s->ex_info.exc_cause, (unsigned long)s->ex_info.exc_vaddr);
 #endif
         const int depth = s->exc_bt_info.depth < 16 ? (int)s->exc_bt_info.depth : 16;
-        for (int i = 0; i < depth && n < 18; i += 4) {
+        for (int i = 0; i < depth && n < 22; i += 4) {
             char* p = lines[n++];
             p[0] = 0;
             for (int j = i; j < i + 4 && j < depth; ++j)
@@ -220,7 +247,7 @@ bool crash_report_show(void)
 
     for (int i = 0; i < n; ++i) ESP_LOGE(TAG, "%s", lines[i]);
     {
-        const char* l[20];
+        const char* l[24];
         for (int i = 0; i < n; ++i) l[i] = lines[i];
         sdlog_crash(l, n);
     }
@@ -230,7 +257,7 @@ bool crash_report_show(void)
     cv_fill(MAC_X, MAC_Y, MAC_W, MAC_H, CV_WHITE);
     cv_frame(MAC_X + 8, MAC_Y + 8, MAC_W - 16, MAC_H - 16, CV_BLACK);
     int y = MAC_Y + 24;
-    for (int i = 0; i < n; ++i, y += 16) cv_text_fit(MAC_X + 24, y, MAC_W - 48, lines[i], CV_BLACK);
+    for (int i = 0; i < n && y < MAC_Y + MAC_H - 110; ++i, y += 16) cv_text_fit(MAC_X + 24, y, MAC_W - 48, lines[i], CV_BLACK);
     y += 6;
     cv_text_fit(MAC_X + 24, y, MAC_W - 48, "Please send a photo of this screen.", CV_BLACK);
     cv_text_fit(MAC_X + 24, y + 18, MAC_W - 48, "The disks were not put back in.", CV_BLACK);

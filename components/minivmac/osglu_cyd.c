@@ -99,6 +99,14 @@ LOCALVAR FILE *Drives[NumDrives]; /* open disk image files */
 LOCALVAR ui5r DriveOffset[NumDrives]; /* where the volume starts in the file */
 LOCALVAR ui5r DriveSize[NumDrives];
 LOCALVAR blnr DriveDirty[NumDrives];
+/*
+	A floppy-sized image is read whole into PSRAM when it goes in: the
+	Mac's reads are then copies, with no card traffic while the Mac runs
+	(0.1.12: every crash so far came between a disk going in and its first
+	transfer finishing). Writes go to the copy and on to the card.
+*/
+#define DriveCacheMax (2 * 1024 * 1024)
+LOCALVAR ui3p DriveCache[NumDrives];
 
 LOCALPROC InitDrives(void)
 {
@@ -109,6 +117,7 @@ LOCALPROC InitDrives(void)
 		DriveOffset[i] = 0;
 		DriveSize[i] = 0;
 		DriveDirty[i] = falseblnr;
+		DriveCache[i] = nullpr;
 	}
 }
 
@@ -128,6 +137,25 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 	tMacErr err = mnvm_miscErr;
 	FILE *refnum = Drives[Drive_No];
 	ui5r NewSony_Count = 0;
+
+	hal_trail(IsWrite ? 'w' : 'r', Sony_Start);
+	if ((nullpr != DriveCache[Drive_No])
+		&& (Sony_Start <= DriveSize[Drive_No])
+		&& (Sony_Count <= DriveSize[Drive_No] - Sony_Start))
+	{
+		ui3p c = DriveCache[Drive_No] + DriveOffset[Drive_No] + Sony_Start;
+		if (! IsWrite) {
+			memcpy(Buffer, c, Sony_Count);
+			if (nullpr != Sony_ActCount) {
+				*Sony_ActCount = Sony_Count;
+			}
+			g_emu.disk_activity++;
+			hal_trail('d', Sony_Count);
+			hal_after_disk_io(IsWrite, Sony_Start, Sony_Count, Buffer);
+			return mnvm_noErr;
+		}
+		memcpy(c, Buffer, Sony_Count);   /* and on to the card, below */
+	}
 
 	hal_fs_lock();
 	if ((Sony_Start <= DriveSize[Drive_No])
@@ -166,6 +194,7 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 		*Sony_ActCount = NewSony_Count;
 	}
 	g_emu.disk_activity++;
+	hal_trail('d', NewSony_Count);
 	hal_after_disk_io(IsWrite, Sony_Start, Sony_Count, Buffer);
 
 	return err;
@@ -206,6 +235,11 @@ LOCALFUNC tMacErr vSonyEject0(tDrive Drive_No)
 	hal_fs_unlock();
 	Drives[Drive_No] = NotAfileRef;
 	DriveDirty[Drive_No] = falseblnr;
+	if (nullpr != DriveCache[Drive_No]) {
+		hal_big_free(DriveCache[Drive_No]);
+		DriveCache[Drive_No] = nullpr;
+	}
+	hal_trail('e', Drive_No);
 
 	g_emu.drives &= ~((uint32_t)1 << Drive_No);
 	g_emu.drive_path[Drive_No][0] = 0;
@@ -245,12 +279,12 @@ LOCALFUNC ui5r BE32(const ui3b *p)
 LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 	ui5r *offset, ui5r *size)
 {
-	ui3b b[512];
+	ui3b *b = DiskBounce; /* aligned, internal: never a stack buffer for the card */
 	ui5r blk = 512;
 	ui5r n = 1;
 	ui5r i;
 
-	if ((0 != fseek(f, 0, SEEK_SET)) || (512 != fread(b, 1, 512, f))) {
+	if ((0 != fseek(f, 0, SEEK_SET)) || (512 != fread(DiskBounce, 1, 512, f))) {
 		return falseblnr;
 	}
 	if ((b[0] != 'E') || (b[1] != 'R')) {
@@ -264,7 +298,7 @@ LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 	}
 	for (i = 1; (i <= n) && (i < 64); ++i) {
 		if ((0 != fseek(f, (long)(i * 512), SEEK_SET))
-			|| (512 != fread(b, 1, 512, f))
+			|| (512 != fread(DiskBounce, 1, 512, f))
 			|| (b[0] != 'P') || (b[1] != 'M'))
 		{
 			break;
@@ -285,6 +319,37 @@ LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 	return falseblnr;
 }
 
+/* The whole file into PSRAM, through DiskBounce (as the ROM is read) */
+LOCALFUNC ui3p ReadWholeImage(FILE *f, ui5r L)
+{
+	ui3p p;
+	ui5r done = 0;
+
+	if ((L > DriveCacheMax) || (0 != fseek(f, 0, SEEK_SET))) {
+		return nullpr;
+	}
+	p = (ui3p)hal_big_calloc(L);
+	if (nullpr == p) {
+		return nullpr;
+	}
+	while (done < L) {
+		ui5r n = L - done;
+		size_t got;
+
+		if (n > DiskBounceSz) {
+			n = DiskBounceSz;
+		}
+		got = fread(DiskBounce, 1, n, f);
+		memcpy(p + done, DiskBounce, got);
+		done += (ui5r)got;
+		if (got != n) {
+			hal_big_free(p);
+			return nullpr;
+		}
+	}
+	return p;
+}
+
 LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 {
 	tDrive Drive_No;
@@ -300,6 +365,7 @@ LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 		return falseblnr;
 	}
 
+	hal_trail('o', Drive_No);
 	refnum = fopen(drivepath, "rb+");
 	if (NULL == refnum) {
 		locked = trueblnr;
@@ -316,6 +382,7 @@ LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 		return falseblnr;
 	}
 
+	hal_trail('f', NULL != refnum);
 	if ((0 != fseek(refnum, 0, SEEK_END)) || ((L = ftell(refnum)) <= 0)) {
 		fclose(refnum);
 		if (! silentfail) {
@@ -327,9 +394,13 @@ LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 	Drives[Drive_No] = refnum;
 	DriveOffset[Drive_No] = 0;
 	DriveSize[Drive_No] = (ui5r)L;
+	hal_trail('s', (uint32_t)L);
 	(void) FindHFSPartition(refnum, (ui5r)L,
 		&DriveOffset[Drive_No], &DriveSize[Drive_No]);
+	hal_trail('h', DriveOffset[Drive_No]);
 	DriveDirty[Drive_No] = falseblnr;
+	DriveCache[Drive_No] = ReadWholeImage(refnum, (ui5r)L);
+	hal_trail('c', nullpr != DriveCache[Drive_No]);
 
 	strncpy(g_emu.drive_path[Drive_No], drivepath, PATH_MAX_LEN - 1);
 	g_emu.drive_path[Drive_No][PATH_MAX_LEN - 1] = 0;
@@ -337,6 +408,7 @@ LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 	g_emu.changes++;
 
 	DiskInsertNotify(Drive_No, locked);
+	hal_trail('n', Drive_No);
 
 	return trueblnr;
 }
