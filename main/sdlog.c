@@ -65,6 +65,7 @@ void sdlog_init(void)
     char a[96], b[96];
     path(a, sizeof a, "log.txt");
     path(b, sizeof b, "log-old.txt");
+    hal_fs_lock();
     unlink(b);
     rename(a, b);
     s_file = fopen(a, "w");
@@ -74,12 +75,14 @@ void sdlog_init(void)
         fprintf(s_file, "%sCYD Mac SE %s\n", ts, APP_VERSION);
         fflush(s_file);
     }
+    hal_fs_unlock();
     s_uart = esp_log_set_vprintf(log_vprintf);
 }
 
 void sdlog_flush(void)
 {
     if (!s_file) return;
+    hal_fs_lock();
     static char chunk[1024];
     bool wrote = false;
     for (;;) {
@@ -95,17 +98,23 @@ void sdlog_flush(void)
         fflush(s_file);
         fsync(fileno(s_file));
     }
+    hal_fs_unlock();
 }
 
 void sdlog_crash(const char* const* lines, int n)
 {
     char a[96];
     path(a, sizeof a, "crash.txt");
+    hal_fs_lock();
     FILE* f = fopen(a, "a");
-    if (!f) return;
+    if (!f) {
+        hal_fs_unlock();
+        return;
+    }
     char ts[24];
     stamp(ts, sizeof ts);
     fprintf(f, "---- %s(reported)\n", ts);
     for (int i = 0; i < n; ++i) fprintf(f, "%s\n", lines[i]);
     fclose(f);
+    hal_fs_unlock();
 }

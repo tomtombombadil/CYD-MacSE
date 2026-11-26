@@ -48,22 +48,31 @@ static void send_file(httpd_req_t* req, const char* name, long tail)
     path(p, sizeof p, name);
     snprintf(buf, sizeof buf, "\n===== %s =====\n", name);
     httpd_resp_sendstr_chunk(req, buf);
+    // The card is held only while reading, not while sending
+    hal_fs_lock();
     FILE* f = fopen(p, "r");
+    long size = 0;
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        size = ftell(f);
+        fseek(f, (tail && size > tail) ? size - tail : 0, SEEK_SET);
+    }
+    hal_fs_unlock();
     if (!f) {
         httpd_resp_sendstr_chunk(req, "(none)\n");
         return;
     }
-    fseek(f, 0, SEEK_END);
-    const long size = ftell(f);
-    if (tail && size > tail) {
-        fseek(f, size - tail, SEEK_SET);
-        httpd_resp_sendstr_chunk(req, "(...)\n");
-    } else {
-        fseek(f, 0, SEEK_SET);
+    if (tail && size > tail) httpd_resp_sendstr_chunk(req, "(...)\n");
+    for (;;) {
+        hal_fs_lock();
+        const size_t n = fread(buf, 1, sizeof buf, f);
+        hal_fs_unlock();
+        if (!n) break;
+        httpd_resp_send_chunk(req, buf, (ssize_t)n);
     }
-    size_t n;
-    while ((n = fread(buf, 1, sizeof buf, f)) > 0) httpd_resp_send_chunk(req, buf, (ssize_t)n);
+    hal_fs_lock();
     fclose(f);
+    hal_fs_unlock();
 }
 
 static esp_err_t on_root(httpd_req_t* req)
@@ -135,8 +144,12 @@ static bool read_settings(char* ssid, char* pass)
     static char tz[64] = "EST5EDT,M3.2.0,M11.1.0";
     char p[96];
     path(p, sizeof p, "wifi.txt");
+    hal_fs_lock();
     FILE* f = fopen(p, "r");
-    if (!f) return false;
+    if (!f) {
+        hal_fs_unlock();
+        return false;
+    }
     char line[160];
     while (fgets(line, sizeof line, f)) {
         line[strcspn(line, "\r\n")] = 0;
@@ -149,6 +162,7 @@ static bool read_settings(char* ssid, char* pass)
         else if (!strcmp(line, "tz")) snprintf(tz, sizeof tz, "%s", eq + 1);
     }
     fclose(f);
+    hal_fs_unlock();
     setenv("TZ", tz, 1);
     tzset();
     return ssid[0] != 0;
