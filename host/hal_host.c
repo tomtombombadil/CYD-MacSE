@@ -44,3 +44,15 @@ void hal_sync_file(void* f) { (void)f; }
 void hal_after_disk_io(int w, uint32_t s, uint32_t c, const void* b) { (void)w; (void)s; (void)c; (void)b; }
 
 const char* hal_net_address(void) { return NULL; }
+
+static pthread_mutex_t s_fs;
+static pthread_once_t s_fs_once = PTHREAD_ONCE_INIT;
+static void fs_init(void)
+{
+    pthread_mutexattr_t a;
+    pthread_mutexattr_init(&a);
+    pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&s_fs, &a);
+}
+void hal_fs_lock(void) { pthread_once(&s_fs_once, fs_init); pthread_mutex_lock(&s_fs); }
+void hal_fs_unlock(void) { pthread_mutex_unlock(&s_fs); }

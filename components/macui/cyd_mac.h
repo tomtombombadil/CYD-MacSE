@@ -34,6 +34,11 @@ void hal_sleep_ms(int ms);
 // Guards g_canvas's Mac area between the emulator's copy and the UI's pages
 void hal_lock(void);
 void hal_unlock(void);
+// One SD card user at a time (the emulator's disks, the UI's settings
+// and disk list, the log): recursive. Tom's crashes came 1 s after a disk
+// went in - the UI saving macse.txt while the Mac read the disk.
+void hal_fs_lock(void);
+void hal_fs_unlock(void);
 // Folders searched for the ROM and disk images, most specific first,
 // NULL-terminated ("/sd/mac", "/sd" on the CYD)
 const char* const* hal_dirs(void);

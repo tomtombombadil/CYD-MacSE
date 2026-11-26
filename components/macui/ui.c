@@ -288,7 +288,7 @@ static const char* settings_path(void)
     return p;
 }
 
-static void save_settings(void)
+static void save_settings0(void)
 {
     FILE* f = fopen(settings_path(), "w");
     if (!f) return;
@@ -297,6 +297,13 @@ static void save_settings(void)
     for (int i = 0; i < EMU_DRIVES; ++i)
         if (g_emu.drives & (1u << i)) fprintf(f, "disk=%s\n", g_emu.drive_path[i]);
     fclose(f);
+}
+
+static void save_settings(void)
+{
+    hal_fs_lock();
+    save_settings0();
+    hal_fs_unlock();
 }
 
 static int s_next_slot;
@@ -309,7 +316,7 @@ static void insert_disk(const char* path)
     emu_post(EV_INSERT, (uint8_t)slot, 0, 0);
 }
 
-static void load_settings(bool insert_saved_disks)
+static void load_settings0(bool insert_saved_disks)
 {
     FILE* f = fopen(settings_path(), "r");
     if (!f) return;
@@ -332,6 +339,13 @@ static void load_settings(bool insert_saved_disks)
         }
     }
     fclose(f);
+}
+
+static void load_settings(bool insert_saved_disks)
+{
+    hal_fs_lock();
+    load_settings0(insert_saved_disks);
+    hal_fs_unlock();
 }
 
 static void settings_changed(void)
@@ -473,7 +487,7 @@ static bool skip_name(const char* n)
     return false;
 }
 
-static void scan_disks(void)
+static void scan_disks0(void)
 {
     if (!s_files) s_files = (DiskFile*)calloc(MAX_FILES, sizeof(DiskFile));
     s_nfiles = 0;
@@ -496,6 +510,13 @@ static void scan_disks(void)
         closedir(dir);
     }
     qsort(s_files, (size_t)s_nfiles, sizeof(DiskFile), cmp_files);
+}
+
+static void scan_disks(void)
+{
+    hal_fs_lock();
+    scan_disks0();
+    hal_fs_unlock();
 }
 
 static void open_page(Page p)

@@ -62,10 +62,33 @@ static void stop_with(const char* what)
     abort();
 }
 
+// With comprehensive heap poisoning every free byte holds 0xFE (TLSF's own
+// links aside: a free block's first 16 bytes and last 8). Find the first
+// free block with anything else in it: something wrote freed memory.
+static bool find_bad_free(walker_heap_into_t heap, walker_block_info_t b, void* user)
+{
+    (void)heap;
+    (void)user;
+    if (b.used || b.size < 64) return true;
+    const uint8_t* p = (const uint8_t*)b.ptr;
+    for (size_t i = 16; i + 8 < b.size; ++i) {
+        if (p[i] == 0xFE) continue;
+        const size_t from = i & ~(size_t)15;
+        s_watch.trap_addr = (uint32_t)(uintptr_t)(p + from);
+        memcpy(s_watch.trap, p + from, 32);
+        size_t bad = 0;
+        for (size_t k = i; k + 8 < b.size; ++k) bad += p[k] != 0xFE;
+        s_watch.trap_bad = (uint32_t)bad;
+        return false;   // stop
+    }
+    return true;
+}
+
 static void check_memory(const char* when)
 {
     char what[64];
     if (!heap_caps_check_integrity(MALLOC_CAP_INTERNAL, true)) {
+        heap_caps_walk(MALLOC_CAP_INTERNAL, find_bad_free, NULL);
         snprintf(what, sizeof what, "Internal heap damaged (%s)", when);
         stop_with(what);
     }
@@ -193,7 +216,7 @@ bool crash_report_show(void)
                  (unsigned long)last.mac_ticks, (unsigned long)last.drives);
     if (valid && last.note[0]) snprintf(lines[n++], 96, "%.60s", last.note);
     if (valid && last.trap_addr) {
-        snprintf(lines[n++], 96, "At %08lx, %lu of 1024 bytes changed:", (unsigned long)last.trap_addr,
+        snprintf(lines[n++], 96, "At %08lx, %lu bytes changed:", (unsigned long)last.trap_addr,
                  (unsigned long)last.trap_bad);
         for (int h = 0; h < 2; ++h) {
             char* p = lines[n++];

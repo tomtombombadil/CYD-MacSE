@@ -41,9 +41,10 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 
-# A write past a heap block is caught when it is freed. (Watchpoint 0 is
+# Every free byte is filled (0xFE) and checked: a write into freed memory
+# is caught by crash_report.c's checks (each second, after each disk transfer). (Watchpoint 0 is
 # crash_report.c's, on the audio stack's end.)
-CONFIG_HEAP_POISONING_LIGHT=y
+CONFIG_HEAP_POISONING_COMPREHENSIVE=y
 
 # Wi-Fi (the log page) stays on core 0: core 1 is the Mac's
 CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y

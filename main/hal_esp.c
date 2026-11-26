@@ -30,6 +30,10 @@ void hal_sleep_ms(int ms)
     vTaskDelay(ms > 0 ? pdMS_TO_TICKS(ms) : 1);
 }
 
+static SemaphoreHandle_t s_fs;
+void hal_fs_lock(void) { xSemaphoreTakeRecursive(s_fs, portMAX_DELAY); }
+void hal_fs_unlock(void) { xSemaphoreGiveRecursive(s_fs); }
+
 void hal_lock(void) { xSemaphoreTake(s_lock, portMAX_DELAY); }
 void hal_unlock(void) { xSemaphoreGive(s_lock); }
 
@@ -56,6 +60,7 @@ void hal_after_disk_io(int is_write, uint32_t start, uint32_t count, const void*
 bool hal_esp_init(void)
 {
     s_lock = xSemaphoreCreateMutex();
+    s_fs = xSemaphoreCreateRecursiveMutex();
 
     spi_bus_config_t bus = {0};
     bus.mosi_io_num = PIN_SD_MOSI;

@@ -65,4 +65,11 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   router; the code uses the DHCP gateway, or ntp= in wifi.txt). Time zone
   US Eastern unless tz=. Log lines and crash.txt carry date + time; the
   Mac's date follows the clock once set. The crash screen waits **60 s**.
+- Crash hunt (0.1.0-0.1.8): internal heap / a task stack damaged, always
+  ~1 s after a disk goes in (at start from macse.txt, or a tap on Disks),
+  before the first disk transfer finishes. The same code with Tom's ROM +
+  System 6.0.8 / 7.0 runs clean on the PC under ASan / TSan (host build,
+  `make CC="gcc -fsanitize=address,undefined"`): board-only. 0.1.8: one
+  recursive SD lock (`hal_fs_lock`) around every card user, comprehensive
+  heap poisoning, the first damaged free block on the crash report.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

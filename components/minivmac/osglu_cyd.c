@@ -129,6 +129,7 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 	FILE *refnum = Drives[Drive_No];
 	ui5r NewSony_Count = 0;
 
+	hal_fs_lock();
 	if ((Sony_Start <= DriveSize[Drive_No])
 		&& (Sony_Count <= DriveSize[Drive_No] - Sony_Start)
 		&& (0 == fseek(refnum, (long)(DriveOffset[Drive_No] + Sony_Start),
@@ -159,6 +160,7 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 			err = mnvm_noErr;
 		}
 	}
+	hal_fs_unlock();
 
 	if (nullpr != Sony_ActCount) {
 		*Sony_ActCount = NewSony_Count;
@@ -180,6 +182,7 @@ LOCALPROC SyncDrives(void)
 {
 	tDrive i;
 
+	hal_fs_lock();
 	for (i = 0; i < NumDrives; ++i) {
 		if (DriveDirty[i] && (NotAfileRef != Drives[i])) {
 			fflush(Drives[i]);
@@ -187,6 +190,7 @@ LOCALPROC SyncDrives(void)
 			DriveDirty[i] = falseblnr;
 		}
 	}
+	hal_fs_unlock();
 }
 
 LOCALFUNC tMacErr vSonyEject0(tDrive Drive_No)
@@ -195,9 +199,11 @@ LOCALFUNC tMacErr vSonyEject0(tDrive Drive_No)
 
 	DiskEjectedNotify(Drive_No);
 
+	hal_fs_lock();
 	fflush(refnum);
 	hal_sync_file(refnum);
 	fclose(refnum);
+	hal_fs_unlock();
 	Drives[Drive_No] = NotAfileRef;
 	DriveDirty[Drive_No] = falseblnr;
 
@@ -279,7 +285,7 @@ LOCALFUNC blnr FindHFSPartition(FILE *f, ui5r fileSize,
 	return falseblnr;
 }
 
-LOCALFUNC blnr Sony_Insert1(const char *drivepath, blnr silentfail)
+LOCALFUNC blnr Sony_Insert10(const char *drivepath, blnr silentfail)
 {
 	tDrive Drive_No;
 	blnr locked = falseblnr;
@@ -335,6 +341,16 @@ LOCALFUNC blnr Sony_Insert1(const char *drivepath, blnr silentfail)
 	return trueblnr;
 }
 
+LOCALFUNC blnr Sony_Insert1(const char *drivepath, blnr silentfail)
+{
+    blnr r;
+
+    hal_fs_lock();
+    r = Sony_Insert10(drivepath, silentfail);
+    hal_fs_unlock();
+    return r;
+}
+
 LOCALFUNC blnr IsInserted(const char *path)
 {
 	tDrive i;
@@ -351,7 +367,7 @@ LOCALFUNC blnr IsInserted(const char *path)
 
 /* --- ROM --- */
 
-LOCALFUNC tMacErr LoadMacRomFrom(const char *path)
+LOCALFUNC tMacErr LoadMacRomFrom0(const char *path)
 {
 	tMacErr err;
 	FILE *ROM_File;
@@ -379,6 +395,16 @@ LOCALFUNC tMacErr LoadMacRomFrom(const char *path)
 	}
 
 	return err;
+}
+
+LOCALFUNC tMacErr LoadMacRomFrom(const char *path)
+{
+    tMacErr r;
+
+    hal_fs_lock();
+    r = LoadMacRomFrom0(path);
+    hal_fs_unlock();
+    return r;
 }
 
 /* MacSE.ROM, or any file named *.rom of the right size, in hal_dirs() */
