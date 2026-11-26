@@ -1,6 +1,7 @@
 // The CYD's platform services (see cyd_mac.h) and the SD card.
 #include <driver/sdspi_host.h>
 #include <driver/spi_common.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <esp_vfs_fat.h>
@@ -29,6 +30,9 @@ void hal_sleep_ms(int ms)
 {
     vTaskDelay(ms > 0 ? pdMS_TO_TICKS(ms) : 1);
 }
+
+void* hal_big_calloc(size_t n) { return heap_caps_calloc(1, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
+void hal_big_free(void* p) { heap_caps_free(p); }
 
 static SemaphoreHandle_t s_fs;
 void hal_fs_lock(void) { xSemaphoreTakeRecursive(s_fs, portMAX_DELAY); }

@@ -56,3 +56,6 @@ static void fs_init(void)
 }
 void hal_fs_lock(void) { pthread_once(&s_fs_once, fs_init); pthread_mutex_lock(&s_fs); }
 void hal_fs_unlock(void) { pthread_mutex_unlock(&s_fs); }
+
+void* hal_big_calloc(size_t n) { return calloc(1, n); }
+void hal_big_free(void* p) { free(p); }

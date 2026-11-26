@@ -489,7 +489,7 @@ static bool skip_name(const char* n)
 
 static void scan_disks0(void)
 {
-    if (!s_files) s_files = (DiskFile*)calloc(MAX_FILES, sizeof(DiskFile));
+    if (!s_files) s_files = (DiskFile*)hal_big_calloc(MAX_FILES * sizeof(DiskFile));
     s_nfiles = 0;
     s_first = 0;
     if (!s_files) return;

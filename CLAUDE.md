@@ -72,4 +72,10 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   `make CC="gcc -fsanitize=address,undefined"`): board-only. 0.1.8: one
   recursive SD lock (`hal_fs_lock`) around every card user, comprehensive
   heap poisoning, the first damaged free block on the crash report.
+  0.1.9 logs: every start-up crash at Mac tick ~90 (the Mac's first disk
+  read). 0.1.10: **PSRAM by request only** (CONFIG_SPIRAM_USE_CAPS_ALLOC;
+  `hal_big_calloc` for the Mac's block and the disk list) and FATFS 512 B
+  sectors: FATFS's 41 KB of file buffers had been in PSRAM (malloc over
+  16 KB went there), i.e. SD transfers through PSRAM. The ROM is read
+  through DiskBounce too. Never let a driver buffer land in PSRAM.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

@@ -377,7 +377,19 @@ LOCALFUNC tMacErr LoadMacRomFrom0(const char *path)
 	if (NULL == ROM_File) {
 		err = mnvm_fnfErr;
 	} else {
-		File_Size = fread(ROM, 1, kROM_Size, ROM_File);
+		/* through DiskBounce (internal RAM): no SD DMA into PSRAM */
+		File_Size = 0;
+		while (File_Size < kROM_Size) {
+			size_t got = fread(DiskBounce, 1, DiskBounceSz, ROM_File);
+			if (0 == got) {
+				break;
+			}
+			if (got > (size_t)(kROM_Size - File_Size)) {
+				got = kROM_Size - File_Size;
+			}
+			memcpy(ROM + File_Size, DiskBounce, got);
+			File_Size += (int)got;
+		}
 		if (kROM_Size != File_Size) {
 			if (feof(ROM_File)) {
 				MacMsgOverride(kStrShortROMTitle,
@@ -897,7 +909,7 @@ LOCALFUNC blnr AllocMyMemory(void)
 	ReserveAllocAll();
 	n = ReserveAllocOffset;
 	/* about 4.8 MB (Mac RAM, ROM, 512 KB opcode table): PSRAM on the CYD */
-	ReserveAllocBigBlock = (ui3p)calloc(1, n);
+	ReserveAllocBigBlock = (ui3p)hal_big_calloc(n);
 	if (NULL == ReserveAllocBigBlock) {
 		MacMsg(kStrOutOfMemTitle, kStrOutOfMemMessage, trueblnr);
 	} else {
@@ -916,7 +928,7 @@ LOCALFUNC blnr AllocMyMemory(void)
 LOCALPROC UnallocMyMemory(void)
 {
 	if (nullpr != ReserveAllocBigBlock) {
-		free((char *)ReserveAllocBigBlock);
+		hal_big_free(ReserveAllocBigBlock);
 	}
 }
 

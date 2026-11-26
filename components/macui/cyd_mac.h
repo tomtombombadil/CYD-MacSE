@@ -9,6 +9,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -34,6 +35,11 @@ void hal_sleep_ms(int ms);
 // Guards g_canvas's Mac area between the emulator's copy and the UI's pages
 void hal_lock(void);
 void hal_unlock(void);
+// Big zeroed blocks (the Mac's RAM, ROM etc; the disk list): PSRAM on the
+// CYD. Everything else (malloc) stays in internal RAM there, so no driver
+// buffer - FATFS's, the SD card's - is ever in PSRAM.
+void* hal_big_calloc(size_t n);
+void hal_big_free(void* p);
 // One SD card user at a time (the emulator's disks, the UI's settings
 // and disk list, the log): recursive. Tom's crashes came 1 s after a disk
 // went in - the UI saving macse.txt while the Mac read the disk.
