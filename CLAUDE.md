@@ -48,8 +48,9 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   core's 512 KB opcode table are: SmallGlobals 1, too big for DRAM; keeps
   the cache). Never use a DMA that reads PSRAM (cyd-classic-arcade
   v0.26.0's lesson).
-- Cores: core 0 the panel interrupt, UI / touch (10 ms poll), sound;
-  core 1 the Mac (no idle watchdog there).
+- Cores: core 0 UI / touch (10 ms poll), sound, Wi-Fi; core 1 the panel
+  interrupt (set up from a task on core 1, 0.1.11: Wi-Fi made the picture
+  jitter) and the Mac (no idle watchdog there).
 - After a crash / watchdog / brown-out restart `main/crash_report.c` shows
   the core dump summary and least free stacks, and the saved disks stay
   out. Decode its addresses with the release's .elf (addr2line).
@@ -78,4 +79,8 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   sectors: FATFS's 41 KB of file buffers had been in PSRAM (malloc over
   16 KB went there), i.e. SD transfers through PSRAM. The ROM is read
   through DiskBounce too. Never let a driver buffer land in PSRAM.
+  0.1.10 still: interrupt watchdog at tick 90, jittery picture. 0.1.11:
+  I2S auto_clear off (its ISR zeroing a 1 KB buffer: prime suspect for
+  the 1 KB of zeros), no heap walks (they ran with interrupts off), light
+  poisoning, SD max_transfer_sz 4096, panel interrupt on core 1.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

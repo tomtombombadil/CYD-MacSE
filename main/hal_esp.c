@@ -72,7 +72,7 @@ bool hal_esp_init(void)
     bus.sclk_io_num = PIN_SD_SCK;
     bus.quadwp_io_num = -1;
     bus.quadhd_io_num = -1;
-    bus.max_transfer_sz = 16384;
+    bus.max_transfer_sz = 4096;   // cyd-classic-arcade's, proven on this board
     if (spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK) return false;
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = SPI3_HOST;

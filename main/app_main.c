@@ -1,6 +1,6 @@
 // CYD Mac SE: Mini vMac on the Freenove 5" ESP32-S3 board.
-//   core 0: the panel's refill interrupt, touch + UI, sound
-//   core 1: the emulated Mac
+//   core 0: touch + UI, sound, Wi-Fi
+//   core 1: the panel's refill interrupt, the emulated Mac
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <stdlib.h>
@@ -27,6 +27,18 @@ static void emu_task(void* arg)
     crash_arm_watchpoint();   // core 1
     emu_main();
     ESP_LOGI(TAG, "the Mac was switched off");
+    vTaskDelete(NULL);
+}
+
+// The panel's refill interrupt goes to the core that sets the panel up.
+// On core 1, away from Wi-Fi's interrupts and everything else on core 0
+// (Tom, 0.1.10: "graphics unstable and jittery"): a refill a little late
+// is a jittery picture.
+static volatile int s_panel_ok = -1;
+static void panel_task(void* arg)
+{
+    (void)arg;
+    s_panel_ok = panel_init() ? 1 : 0;
     vTaskDelete(NULL);
 }
 
@@ -58,7 +70,9 @@ void app_main(void)
     ESP_LOGI(TAG, "start, reset reason %d", (int)esp_reset_reason());
     if (sd) g_wifi_on = wifi_web_start();   // the log page, if mac\wifi.txt says how
     const bool touch = touch_init();   // before the sound: its INT pin is the amp's LRCLK
-    if (!panel_init()) return;
+    xTaskCreatePinnedToCore(panel_task, "panel", 6144, NULL, 10, NULL, 1);
+    while (s_panel_ok < 0) vTaskDelay(1);
+    if (!s_panel_ok) return;
     // After a crash the saved disks stay out (one may be the cause)
     const bool crashed = crash_report_show();
     ui_init(!crashed);

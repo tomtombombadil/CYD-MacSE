@@ -36,7 +36,11 @@ bool audio_init(void)
     i2s_chan_config_t cc = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     cc.dma_desc_num = 4;
     cc.dma_frame_num = CHUNK;
-    cc.auto_clear = true;
+    // No auto_clear: its clearing (the I2S interrupt zeroing a 1 KB buffer
+    // when the sound runs dry) is the prime suspect for the 1 KB of zeros
+    // found over the audio stack (0.1.6) and the heap damage at the Mac's
+    // first disk read. emu_audio_pull never waits, so the sound never runs dry.
+    cc.auto_clear = false;
     esp_err_t err = i2s_new_channel(&cc, &s_tx, NULL);
     if (err == ESP_OK) {
         i2s_std_config_t sc = {

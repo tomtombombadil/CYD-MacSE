@@ -62,42 +62,6 @@ static void stop_with(const char* what)
     abort();
 }
 
-// With comprehensive heap poisoning every free byte holds 0xFE (TLSF's own
-// links aside: a free block's first 16 bytes and last 8). Find the first
-// free block with anything else in it: something wrote freed memory.
-static bool find_bad_free(walker_heap_into_t heap, walker_block_info_t b, void* user)
-{
-    (void)heap;
-    (void)user;
-    if (b.used || b.size < 64) return true;
-    const uint8_t* p = (const uint8_t*)b.ptr;
-    for (size_t i = 16; i + 8 < b.size; ++i) {
-        if (p[i] == 0xFE) continue;
-        const size_t from = i & ~(size_t)15;
-        s_watch.trap_addr = (uint32_t)(uintptr_t)(p + from);
-        memcpy(s_watch.trap, p + from, 32);
-        size_t bad = 0;
-        for (size_t k = i; k + 8 < b.size; ++k) bad += p[k] != 0xFE;
-        s_watch.trap_bad = (uint32_t)bad;
-        return false;   // stop
-    }
-    return true;
-}
-
-static void check_memory(const char* when)
-{
-    char what[64];
-    if (!heap_caps_check_integrity(MALLOC_CAP_INTERNAL, true)) {
-        heap_caps_walk(MALLOC_CAP_INTERNAL, find_bad_free, NULL);
-        snprintf(what, sizeof what, "Internal heap damaged (%s)", when);
-        stop_with(what);
-    }
-    if (g_audio_task && uxTaskGetStackHighWaterMark(g_audio_task) < 32) {
-        snprintf(what, sizeof what, "Audio stack end overwritten (%s)", when);
-        stop_with(what);
-    }
-}
-
 // From the audio task, every 256 samples: its own stack's end (FreeRTOS
 // fills it with 0xA5; its overflow check looks at the first 20 bytes)
 void crash_check_audio_stack(const char* when)
@@ -139,7 +103,12 @@ void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const vo
     s_watch.io_start = start;
     s_watch.io_count = count;
     s_watch.io_buf = (uint32_t)(uintptr_t)buf;
-    check_memory(is_write ? "after a disk write" : "after a disk read");
+    // No heap walk here any more (0.1.11): it holds the heap's lock with
+    // interrupts off; on a damaged heap it can spin until the interrupt
+    // watchdog (0.1.9 / 0.1.10's reports), and it starves the panel.
+    if (g_audio_task && uxTaskGetStackHighWaterMark(g_audio_task) < 32)
+        stop_with(is_write ? "Audio stack end overwritten (after a disk write)"
+                           : "Audio stack end overwritten (after a disk read)");
 }
 
 void crash_watch_tick(void)
@@ -154,7 +123,8 @@ void crash_watch_tick(void)
                  (unsigned long)s_watch.uptime_s, (unsigned long)s_watch.mac_ticks, (unsigned long)s_watch.drives,
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (long)s_watch.free_stack[0],
                  (long)s_watch.free_stack[1], (long)s_watch.free_stack[2]);
-    check_memory("1 s check");
+    if (g_audio_task && uxTaskGetStackHighWaterMark(g_audio_task) < 32)
+        stop_with("Audio stack end overwritten (1 s check)");
     for (int i = 0; i < 3; ++i) {
         if (!s_tasks[i]) continue;
         const uint32_t f = (uint32_t)uxTaskGetStackHighWaterMark(s_tasks[i]);
