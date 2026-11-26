@@ -14,6 +14,7 @@
 
 #include "board.h"
 #include "cyd_mac.h"
+#include "crash_report.h"
 #include "hal_esp.h"
 
 static const char* TAG = "sd";
@@ -35,6 +36,11 @@ const char* const* hal_dirs(void) { return s_dirs; }
 int64_t hal_unix_time(void) { return 0; }   // no clock on the board
 
 void hal_sync_file(void* f) { fsync(fileno((FILE*)f)); }
+
+void hal_after_disk_io(int is_write, uint32_t start, uint32_t count, const void* mac_buf)
+{
+    crash_check_after_io(is_write, start, count, mac_buf);
+}
 
 bool hal_esp_init(void)
 {

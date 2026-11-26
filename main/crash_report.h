@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -9,4 +10,6 @@ bool crash_report_show(void);
 
 // Keep track of the tasks' least free stack, for the next crash report
 void crash_watch_tasks(TaskHandle_t audio, TaskHandle_t ui, TaskHandle_t mac);
-void crash_watch_tick(void);   // about once a second
+void crash_watch_tick(void);
+// After each disk transfer: note it, check the heap and the audio stack
+void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const void* buf);   // about once a second

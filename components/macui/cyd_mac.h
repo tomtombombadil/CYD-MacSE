@@ -41,6 +41,8 @@ const char* const* hal_dirs(void);
 int64_t hal_unix_time(void);
 // The SD card's file system after writes: push what's cached to the card
 void hal_sync_file(void* stdio_file);
+// After each disk image read / write (the CYD checks its memory there)
+void hal_after_disk_io(int is_write, uint32_t start, uint32_t count, const void* mac_buf);
 
 // ---- UI -> emulator events ----
 enum {

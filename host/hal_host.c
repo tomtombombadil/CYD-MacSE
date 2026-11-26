@@ -44,3 +44,4 @@ int64_t hal_unix_time(void)
 }
 
 void hal_sync_file(void* f) { (void)f; }
+void hal_after_disk_io(int w, uint32_t s, uint32_t c, const void* b) { (void)w; (void)s; (void)c; (void)b; }

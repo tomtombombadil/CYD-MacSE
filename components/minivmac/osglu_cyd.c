@@ -112,6 +112,15 @@ LOCALPROC InitDrives(void)
 	}
 }
 
+/*
+	The card is read and written through this buffer, never straight
+	from / to the Mac's RAM: that is in PSRAM, at any alignment, and the
+	SD driver would then make a DMA bounce buffer for every block.
+	Internal RAM, aligned for DMA.
+*/
+#define DiskBounceSz 4096
+static ui3b DiskBounce[DiskBounceSz] __attribute__((aligned(64)));
+
 GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 	tDrive Drive_No, ui5r Sony_Start, ui5r Sony_Count,
 	ui5r *Sony_ActCount)
@@ -125,11 +134,25 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 		&& (0 == fseek(refnum, (long)(DriveOffset[Drive_No] + Sony_Start),
 			SEEK_SET)))
 	{
-		if (IsWrite) {
-			NewSony_Count = fwrite(Buffer, 1, Sony_Count, refnum);
-			DriveDirty[Drive_No] = trueblnr;
-		} else {
-			NewSony_Count = fread(Buffer, 1, Sony_Count, refnum);
+		while (NewSony_Count < Sony_Count) {
+			ui5r n = Sony_Count - NewSony_Count;
+			size_t got;
+
+			if (n > DiskBounceSz) {
+				n = DiskBounceSz;
+			}
+			if (IsWrite) {
+				memcpy(DiskBounce, Buffer + NewSony_Count, n);
+				got = fwrite(DiskBounce, 1, n, refnum);
+				DriveDirty[Drive_No] = trueblnr;
+			} else {
+				got = fread(DiskBounce, 1, n, refnum);
+				memcpy(Buffer + NewSony_Count, DiskBounce, got);
+			}
+			NewSony_Count += (ui5r)got;
+			if (got != n) {
+				break;
+			}
 		}
 
 		if (NewSony_Count == Sony_Count) {
@@ -141,6 +164,7 @@ GLOBALOSGLUFUNC tMacErr vSonyTransfer(blnr IsWrite, ui3p Buffer,
 		*Sony_ActCount = NewSony_Count;
 	}
 	g_emu.disk_activity++;
+	hal_after_disk_io(IsWrite, Sony_Start, Sony_Count, Buffer);
 
 	return err;
 }
@@ -274,6 +298,10 @@ LOCALFUNC blnr Sony_Insert1(const char *drivepath, blnr silentfail)
 	if (NULL == refnum) {
 		locked = trueblnr;
 		refnum = fopen(drivepath, "rb");
+	}
+	if (NULL != refnum) {
+		/* whole blocks go through DiskBounce: no stdio buffer */
+		(void) setvbuf(refnum, NULL, _IONBF, 0);
 	}
 	if (NULL == refnum) {
 		if (! silentfail) {
