@@ -4,7 +4,7 @@
 // Commands, run in order:
 //   wait:<ms>          let the Mac run
 //   tap:<x>,<y>        a tap on the 800x480 glass (held 80 ms)
-//   press:<x>,<y> / move:<x>,<y> / release
+//   press:<x>,<y> / move:<x>,<y> / release (wait:ms between: held still)
 //   shot:<file.pbm>    save the screen (1-bit PBM)
 #include <pthread.h>
 #include <stdio.h>
@@ -22,10 +22,15 @@ static void* emu_thread(void* arg)
     return NULL;
 }
 
+static bool s_touch_down;
+static int s_tx, s_ty;
+
 static void run_ui(int ms)
 {
-    // the UI polls touch about every 10 ms on the board
+    // the UI polls touch about every 10 ms on the board (a touch held
+    // down is reported at every poll, as the GT911 does)
     for (int t = 0; t < ms; t += 10) {
+        if (s_touch_down) ui_touch(true, s_tx, s_ty);
         ui_tick();
         hal_sleep_ms(10);
     }
@@ -68,9 +73,23 @@ int main(int argc, char** argv)
             run_ui(80);
             ui_touch(false, x, y);
             run_ui(20);
-        } else if (sscanf(a, "press:%d,%d", &x, &y) == 2) { ui_touch(true, x, y); run_ui(20); }
-        else if (sscanf(a, "move:%d,%d", &x, &y) == 2) { ui_touch(true, x, y); run_ui(20); }
-        else if (!strcmp(a, "release")) { ui_touch(false, x, y); run_ui(20); }
+        } else if (sscanf(a, "press:%d,%d", &x, &y) == 2) {
+            ui_touch(true, x, y);
+            s_touch_down = true; s_tx = x; s_ty = y;
+            run_ui(20);
+        } else if (sscanf(a, "move:%d,%d", &x, &y) == 2) {
+            // in 10 steps, as a finger slides
+            const int x0 = s_tx, y0 = s_ty;
+            for (int k = 1; k <= 10; ++k) {
+                s_tx = x0 + (x - x0) * k / 10; s_ty = y0 + (y - y0) * k / 10;
+                ui_touch(true, s_tx, s_ty);
+                run_ui(10);
+            }
+        } else if (!strcmp(a, "release")) {
+            s_touch_down = false;
+            ui_touch(false, s_tx, s_ty);
+            run_ui(20);
+        }
         else if (!strncmp(a, "shot:", 5)) shot(a + 5);
         else fprintf(stderr, "unknown command %s\n", a);
     }

@@ -813,12 +813,45 @@ LOCALFUNC blnr InitLocationDat(void)
 LOCALVAR ui3b PendingInsert[INSERT_SLOTS * 2];
 LOCALVAR int PendingInsertN = 0;
 
+/*
+	A mouse button change waits until the Mac has had the pointer's last
+	move for 6 ticks (0.1 s; the Finder's drag loop takes a few): else
+	a quick drag's last moves and its button up land together and the Mac
+	drops the drag short of the end.
+*/
+LOCALVAR emu_event HeldButtonEvent;
+LOCALVAR blnr HaveHeldButtonEvent = falseblnr;
+LOCALVAR ui5b LastMoveTick = 0;
+#define ButtonAfterMoveTicks 6
+
 LOCALPROC CheckForSystemEvents(void)
 {
 	emu_event e;
 	int n = 0;
 
-	while ((n++ < 32) && emu_take(&e)) {
+	for (;;) {
+		if (n++ >= 32) {
+			break;
+		}
+		if (HaveHeldButtonEvent) {
+			if ((ui5b)(g_emu.ticks - LastMoveTick) < ButtonAfterMoveTicks) {
+				break;
+			}
+			e = HeldButtonEvent;
+			HaveHeldButtonEvent = falseblnr;
+		} else if (! emu_take(&e)) {
+			break;
+		} else if ((EV_MOUSE_BTN == e.kind)
+			&& ((ui5b)(g_emu.ticks - LastMoveTick) < ButtonAfterMoveTicks))
+		{
+			HeldButtonEvent = e;
+			HaveHeldButtonEvent = trueblnr;
+			break;
+		}
+		if (EV_MOUSE_BTN == e.kind) {
+			MyMouseButtonSet(0 != e.a);
+			break;
+		}
 		switch (e.kind) {
 			case EV_MOUSE_POS:
 				if (e.x >= vMacScreenWidth) {
@@ -829,6 +862,7 @@ LOCALPROC CheckForSystemEvents(void)
 				}
 				HaveMouseMotion = falseblnr;
 				MyMousePositionSet(e.x, e.y);
+				LastMoveTick = g_emu.ticks;
 				break;
 			case EV_MOUSE_BTN:
 				MyMouseButtonSet(0 != e.a);

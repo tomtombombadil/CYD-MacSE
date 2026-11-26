@@ -6,11 +6,13 @@
 //   x 656..799  Command, Option, Control, Space, Enter, arrows
 //   y 342..479  keyboard, 4 rows
 //
-// Mouse: a tap on the Mac screen moves the pointer there and clicks
-// (press and release follow the stylus). Pressing and moving more than a
-// few pixels drags. A tap on the menu bar keeps the button held, so the
-// next tap picks a menu item. Drag: the next tap presses and holds, the
-// one after moves there and lets go (drag an icon or window by two taps).
+// Mouse (Tom, 2026-11-25): the Mac screen is a trackpad, as on a laptop.
+// Moving the finger / stylus moves the pointer by as much (relative, not
+// to the spot touched); a tap clicks where the pointer is; two taps
+// double-click; touch and hold still (0.4 s) presses the button, and
+// moving then drags, until the touch lifts. A tap with the pointer on the
+// menu bar keeps the button held: move to the item, tap to choose it.
+// Drag: the next tap presses and holds, moves keep it held, a tap lets go.
 // Double Click: the next tap double-clicks.
 // Keys: Shift, Command, Option and Control stay down until the next key or
 // click; Caps Lock stays down until tapped again.
@@ -73,7 +75,7 @@ static Page s_page = PAGE_NONE;
 static bool s_shift, s_command, s_option, s_control, s_caps;
 static bool s_drag_armed, s_double_armed;
 // The Mac's mouse button held between taps (menu bar tap, Drag)
-enum { HOLD_NONE, HOLD_START, HOLD_WAIT, HOLD_MOVE };
+enum { HOLD_NONE, HOLD_WAIT };
 static int s_hold;            // HOLD_*
 static bool s_hold_drag;      // started by Drag (lights the key)
 
@@ -84,7 +86,11 @@ static bool s_press_mac;      // pressing on the Mac screen
 static bool s_press_page;
 static int s_px, s_py;        // where it went down
 static bool s_moving;         // left the dead zone: the pointer follows
-static int s_mx, s_my;        // last pointer position sent
+static int s_mx, s_my;        // last pointer position sent (Mac screen)
+static int s_bx, s_by;        // the pointer when the touch went down
+static uint64_t s_t0;         // when the touch went down
+static bool s_held;           // touch and hold: the button is down
+#define HOLD_US 400000
 
 static uint32_t s_seen_changes;
 static bool s_dirty_settings;
@@ -247,8 +253,8 @@ static void update_status(void)
     if (g_emu.rom == -1) set_status("No ROM found", "See the Mac screen");
     else if (g_emu.rom == -2) set_status("ROM not usable", "See the Mac screen");
     else if (s_hold != HOLD_NONE) set_status("Button Held", "Tap to let go");
-    else if (s_drag_armed) set_status("Drag:", "Tap the start");
-    else if (s_double_armed) set_status("Double Click:", "Tap the place");
+    else if (s_drag_armed) set_status("Drag:", "Tap to press");
+    else if (s_double_armed) set_status("Double Click:", "Tap to click");
     else if (g_emu.drives == 0) set_status("No disk in", "Tap Disks");
     else set_status("", "");
 }
@@ -608,9 +614,9 @@ static void release_mods(void)
     set_mod(K_CONTROL, false);
 }
 
-static void mouse_to(int x, int y)
+// The pointer to a place on the Mac's screen
+static void mouse_mac(int mx, int my)
 {
-    int mx = x - MAC_X, my = y - MAC_Y;
     if (mx < 0) mx = 0;
     if (mx > MAC_W - 1) mx = MAC_W - 1;
     if (my < 0) my = 0;
@@ -632,52 +638,78 @@ static void end_hold(void)
     redraw_keys_of(KIND_DRAG, -1);
 }
 
+static void click(void)
+{
+    button(true);
+    hal_sleep_ms(40);
+    button(false);
+}
+
 static void mac_press(int x, int y)
 {
+    (void)x;
+    (void)y;
     s_press_mac = true;
     s_moving = false;
-    mouse_to(x, y);
-    if (s_hold == HOLD_WAIT) {
-        s_hold = HOLD_MOVE;   // the pointer went there with the button held
-        return;
-    }
-    if (s_double_armed) {
-        s_double_armed = false;
-        redraw_keys_of(KIND_DOUBLE, -1);
+    s_held = false;
+    s_t0 = hal_time_us();
+    if (s_mx < 0) mouse_mac(MAC_W / 2, MAC_H / 2);
+    s_bx = s_mx;
+    s_by = s_my;
+}
+
+// While the touch is down (every poll): trackpad moves, touch and hold
+static void mac_follow(int x, int y)
+{
+    // a firm stylus wobbles: nothing moves until the touch clearly has
+    if (!s_moving && (abs(x - s_px) > 6 || abs(y - s_py) > 6)) s_moving = true;
+    if (s_moving) {
+        mouse_mac(s_bx + (x - s_px), s_by + (y - s_py));
+    } else if (!s_held && s_hold == HOLD_NONE && hal_time_us() - s_t0 >= HOLD_US) {
+        s_held = true;   // touch and hold: the button goes down
         button(true);
-        hal_sleep_ms(40);
-        button(false);
-        hal_sleep_ms(60);
-        button(true);   // the second click lets go with the stylus
-        return;
-    }
-    button(true);
-    if (s_drag_armed) {
-        s_drag_armed = false;
-        s_hold = HOLD_START;
-        s_hold_drag = true;
-        redraw_keys_of(KIND_DRAG, -1);
-    } else if (y - MAC_Y < 20) {
-        // the menu bar: keep the menu open for the next tap
-        s_hold = HOLD_START;
-        s_hold_drag = false;
     }
 }
 
 static void mac_release(void)
 {
     s_press_mac = false;
-    if (s_hold == HOLD_START) {
-        // pulled down a menu by dragging: that was a whole menu choice
-        if (s_moving && !s_hold_drag) end_hold();
-        else s_hold = HOLD_WAIT;
+    if (s_held) {   // touch and hold (and maybe a drag) ends
+        s_held = false;
+        button(false);
+        release_mods();
         return;
     }
-    if (s_hold == HOLD_MOVE) {
+    if (s_moving) return;   // the pointer moved: no click
+    // a tap
+    if (s_hold != HOLD_NONE) {   // the button held since an earlier tap: let go here
         end_hold();
         return;
     }
-    button(false);
+    if (s_double_armed) {
+        s_double_armed = false;
+        redraw_keys_of(KIND_DOUBLE, -1);
+        click();
+        hal_sleep_ms(60);
+        click();
+        release_mods();
+        return;
+    }
+    if (s_drag_armed) {
+        s_drag_armed = false;
+        s_hold = HOLD_WAIT;
+        s_hold_drag = true;
+        button(true);
+        redraw_keys_of(KIND_DRAG, -1);
+        return;
+    }
+    if (s_my < 20) {   // the menu bar: the menu stays open
+        s_hold = HOLD_WAIT;
+        s_hold_drag = false;
+        button(true);
+        return;
+    }
+    click();
     release_mods();
 }
 
@@ -780,12 +812,7 @@ void ui_touch(bool down, int x, int y)
         }
         update_status();
     } else if (down && s_down) {
-        if (s_press_mac) {
-            // a firm stylus wobbles: the pointer stays put until the
-            // touch has clearly moved, then it follows
-            if (!s_moving && (abs(x - s_px) > 6 || abs(y - s_py) > 6)) s_moving = true;
-            if (s_moving) mouse_to(x, y);
-        }
+        if (s_press_mac) mac_follow(x, y);
     } else if (!down && s_down) {
         s_down = false;
         if (s_press_page) page_tap(s_px, s_py);

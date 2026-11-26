@@ -11,7 +11,9 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   `python -m pip install`.
 - He does not want to repeat instructions: decisions go in this file.
 - He uses a stylus (Nintendo DS Lite), firm presses: taps, not drags; no
-  confirmations; Title Case for buttons and menus; a handedness setting;
+  confirmations; but the Mac screen is a **trackpad** (Tom, 2026-11-25:
+  "like 99% of all laptops"): slide moves the pointer relatively, tap
+  clicks, touch and hold presses (then slide drags); Title Case for buttons and menus; a handedness setting;
   sounds sparse.
 - Tom gave full permission to manage, push, post and release in this repo
   (2026-11-25).
@@ -100,4 +102,7 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   the PC's 8 MB stacks hide stack overruns; match the board's stack.
   Disk I/O goes through read()/write() on fileno (newlib reads an
   unbuffered stdio stream a byte at a time).
+- Mouse button changes wait 6 Mac ticks after the last pointer move
+  (`osglu_cyd.c` CheckForSystemEvents): a quick drag's button up was
+  landing before the Finder's drag loop saw the last moves.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

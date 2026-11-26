@@ -80,14 +80,15 @@ gives another (a POSIX time zone, e.g. `tz=CST6CDT,M3.2.0,M11.1.0`).
 The Mac's screen is shown 1:1 (512x342) at the top middle, the keyboard
 below, and keys on both sides.
 
-- **Mouse**: tap the Mac's screen to move the pointer there and click.
-  Press and move to drag (small wobbles of a firm stylus are ignored).
-- **Menus**: tap a menu title and the menu stays open; tap the item you
-  want.
-- **Drag**: tap Drag, then tap where the drag starts (the button goes
-  down there), then tap where it ends (it moves there and lets go). For
-  moving icons and windows without dragging the stylus.
-- **Double Click**: tap it, then tap the place to double-click.
+- **Mouse**: the Mac's screen works like a laptop trackpad. Slide to
+  move the pointer, tap to click, tap twice to double-click. Touch and
+  hold still for a moment to press the button, then slide to drag; lift
+  to let go.
+- **Menus**: hold on a menu title and slide down, or tap the title: the
+  menu stays open, slide to the item, and tap to choose it.
+- **Drag**: tap Drag, then tap to press the button where the pointer is;
+  slides move it with the button held, and a tap lets go.
+- **Double Click**: tap it, then tap to double-click where the pointer is.
 - **Shift, Command, Option, Control** stay down until the next key or
   click (Command then Q quits). **Caps Lock** stays down until tapped
   again.
