@@ -61,4 +61,8 @@ of tomtombombadil/cyd-classic-arcade (its 5" board facts are reused here).
   and serves the three logs as plain text at http://<address>/ (shown in
   Settings and on the crash screen; hostname cyd-macse). Wi-Fi and its
   tasks on core 0. Not a GitHub upload (he declined it).
+- Clock (Tom, 2026-11-25): once on Wi-Fi, NTP from **192.168.4.1** (his
+  router; the code uses the DHCP gateway, or ntp= in wifi.txt). Time zone
+  US Eastern unless tz=. Log lines and crash.txt carry date + time; the
+  Mac's date follows the clock once set. The crash screen waits **60 s**.
 - GT911 INT = the amp's LRCLK: touch is reset first, INT released, then I2S.

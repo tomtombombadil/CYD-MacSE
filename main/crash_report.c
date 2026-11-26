@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include <esp_core_dump.h>
+#include <esp_cpu.h>
+#include <time.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
 #include <esp_log.h>
@@ -39,6 +41,7 @@ typedef struct {
     uint32_t uptime_s, mac_ticks, drives;   // at the last 1 s check
     uint32_t trap_addr;       // the audio stack's end, when found overwritten
     uint8_t trap[32];         // its first 32 bytes then
+    int64_t wall;             // the clock at the last 1 s check (0: not set)
     uint32_t trap_bad;        // how many of its first 1024 bytes were not 0xA5
 } watch_t;
 static RTC_NOINIT_ATTR watch_t s_watch;
@@ -91,6 +94,21 @@ void crash_check_audio_stack(const char* when)
     stop_with(what);
 }
 
+// A hardware watchpoint on the audio stack's end, on the core this runs
+// on (each core has its own): whatever code stores there stops the board
+// with its own address in the crash report. If the report then still
+// says "Audio stack end overwritten", a DMA did it (no watchpoint sees
+// DMA).
+void crash_arm_watchpoint(void)
+{
+    if (!g_audio_task) return;
+    const uintptr_t end = (uintptr_t)pxTaskGetStackStart(g_audio_task);
+    if (!end) return;
+    const uintptr_t a = (end + 63) & ~(uintptr_t)63;
+    esp_cpu_set_watchpoint(0, (const void*)a, 64, ESP_CPU_WATCHPOINT_STORE);
+    ESP_LOGI(TAG, "watching %08lx on core %d", (unsigned long)a, xPortGetCoreID());
+}
+
 void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const void* buf)
 {
     s_watch.io_n++;
@@ -104,6 +122,7 @@ void crash_check_after_io(int is_write, uint32_t start, uint32_t count, const vo
 void crash_watch_tick(void)
 {
     s_watch.uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
+    s_watch.wall = hal_unix_time();
     s_watch.mac_ticks = g_emu.ticks;
     s_watch.drives = g_emu.drives;
     static unsigned s_n;
@@ -145,6 +164,7 @@ bool crash_report_show(void)
     s_watch.note[0] = 0;
     s_watch.trap_addr = 0;
     s_watch.uptime_s = s_watch.mac_ticks = s_watch.drives = 0;
+    s_watch.wall = 0;
     if (!why) {
         esp_core_dump_image_erase();   // an old one, from before a normal start
         return false;
@@ -160,6 +180,14 @@ bool crash_report_show(void)
                  last.free_stack[1] == UINT32_MAX ? -1L : (long)last.free_stack[1],
                  last.free_stack[2] == UINT32_MAX ? -1L : (long)last.free_stack[2]);
 
+    if (valid && last.wall) {
+        const time_t t = (time_t)last.wall;
+        struct tm lt;
+        localtime_r(&t, &lt);
+        char b[40];
+        strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", &lt);
+        snprintf(lines[n++], 96, "Crashed at about %s", b);
+    }
     if (valid)
         snprintf(lines[n++], 96, "Up %lu s, Mac ticks %lu, drives %lx", (unsigned long)last.uptime_s,
                  (unsigned long)last.mac_ticks, (unsigned long)last.drives);
@@ -213,14 +241,14 @@ bool crash_report_show(void)
     y += 6;
     cv_text_fit(MAC_X + 24, y, MAC_W - 48, "Please send a photo of this screen.", CV_BLACK);
     cv_text_fit(MAC_X + 24, y + 18, MAC_W - 48, "The disks were not put back in.", CV_BLACK);
-    cv_text_center(MAC_X, MAC_Y + MAC_H - 40, MAC_W, 20, "Tap to go on (or wait 30 seconds)", CV_BLACK);
+    cv_text_center(MAC_X, MAC_Y + MAC_H - 40, MAC_W, 20, "Tap to go on (or wait 60 seconds)", CV_BLACK);
     hal_unlock();
 
-    // A tap anywhere (down, then up), or 30 seconds
+    // A tap anywhere (down, then up), or 60 seconds
     int x, yy;
     int t = 0;
     bool shown = false;
-    while (!touch_read(&x, &yy) && t < 1500) {
+    while (!touch_read(&x, &yy) && t < 3000) {
         const char* a = hal_net_address();
         if (!shown && a && a[0]) {
             char l[64];
@@ -233,7 +261,7 @@ bool crash_report_show(void)
         vTaskDelay(pdMS_TO_TICKS(20));
         ++t;
     }
-    while (touch_read(&x, &yy) && t < 1500) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
+    while (touch_read(&x, &yy) && t < 3000) { vTaskDelay(pdMS_TO_TICKS(20)); ++t; }
 
     hal_lock();
     cv_fill(MAC_X, MAC_Y, MAC_W, MAC_H, CV_WHITE);

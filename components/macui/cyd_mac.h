@@ -37,7 +37,8 @@ void hal_unlock(void);
 // Folders searched for the ROM and disk images, most specific first,
 // NULL-terminated ("/sd/mac", "/sd" on the CYD)
 const char* const* hal_dirs(void);
-// Seconds since 1970 (local time), or 0 if the board doesn't know the time
+// Seconds since 1970 (UTC; the TZ variable gives local time), or 0 while
+// the board doesn't know the time
 int64_t hal_unix_time(void);
 // The SD card's file system after writes: push what's cached to the card
 void hal_sync_file(void* stdio_file);

@@ -3,6 +3,8 @@
 //   core 1: the emulated Mac
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <stdlib.h>
+#include <time.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -22,6 +24,7 @@ static const char* TAG = "macse";
 static void emu_task(void* arg)
 {
     (void)arg;
+    crash_arm_watchpoint();   // core 1
     emu_main();
     ESP_LOGI(TAG, "the Mac was switched off");
     vTaskDelete(NULL);
@@ -30,6 +33,7 @@ static void emu_task(void* arg)
 static void ui_task(void* arg)
 {
     (void)arg;
+    crash_arm_watchpoint();   // core 0
     int n = 0;
     for (;;) {
         int x = 0, y = 0;
@@ -47,6 +51,8 @@ static void ui_task(void* arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "PSRAM free: %u KB", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);   // Tom's; wifi.txt's tz= replaces it
+    tzset();
     const bool sd = hal_esp_init();
     if (sd) sdlog_init();
     ESP_LOGI(TAG, "start, reset reason %d", (int)esp_reset_reason());

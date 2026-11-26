@@ -41,9 +41,8 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 
-# Catch a task running off the end of its stack where it happens (a
-# watchpoint), and a write past a heap block when it is freed
-CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
+# A write past a heap block is caught when it is freed. (Watchpoint 0 is
+# crash_report.c's, on the audio stack's end.)
 CONFIG_HEAP_POISONING_LIGHT=y
 
 # Wi-Fi (the log page) stays on core 0: core 1 is the Mac's

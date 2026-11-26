@@ -37,10 +37,7 @@ const char* const* hal_dirs(void) { return s_dirs; }
 
 int64_t hal_unix_time(void)
 {
-    time_t t = time(NULL);
-    struct tm lt;
-    localtime_r(&t, &lt);
-    return (int64_t)t + lt.tm_gmtoff;
+    return (int64_t)time(NULL);
 }
 
 void hal_sync_file(void* f) { (void)f; }

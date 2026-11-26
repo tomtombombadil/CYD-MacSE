@@ -6,12 +6,20 @@
 // log-old.txt (the start before this one) and log.txt (this start), as
 // plain text to copy. The address is on the crash screen and in the log;
 // the board also asks the router for the name "cyd-macse".
+// Two more optional lines (Tom, 2026-11-25):
+//   ntp=<time server>   (else the router, the network's gateway)
+//   tz=<POSIX time zone> (else US Eastern: EST5EDT,M3.2.0,M11.1.0)
+// The clock is set from the time server once joined; the log and the Mac
+// use it.
 #include "wifi_web.h"
 
 #include <esp_event.h>
 #include <esp_http_server.h>
 #include <esp_log.h>
 #include <esp_netif.h>
+#include <esp_sntp.h>
+#include <stdlib.h>
+#include <time.h>
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <stdio.h>
@@ -22,6 +30,7 @@
 
 static const char* TAG = "wifi";
 static char s_ip[20];
+static char s_ntp[64];
 static httpd_handle_t s_httpd;
 
 #define TAIL 16384   // bytes of each log shown
@@ -80,6 +89,30 @@ static void start_web(void)
     httpd_register_uri_handler(s_httpd, &root);
 }
 
+static void on_time(struct timeval* tv)
+{
+    (void)tv;
+    char b[32];
+    const time_t t = time(NULL);
+    struct tm lt;
+    localtime_r(&t, &lt);
+    strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S %Z", &lt);
+    ESP_LOGI(TAG, "clock set from %s: %s", s_ntp, b);
+}
+
+static void start_ntp(const esp_ip4_addr_t* gw)
+{
+    static bool started;
+    if (started) return;
+    started = true;
+    if (!s_ntp[0]) snprintf(s_ntp, sizeof s_ntp, IPSTR, IP2STR(gw));
+    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, s_ntp);
+    sntp_set_time_sync_notification_cb(on_time);
+    esp_sntp_init();
+    ESP_LOGI(TAG, "asking %s for the time", s_ntp);
+}
+
 static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data)
 {
     (void)arg;
@@ -93,11 +126,13 @@ static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data)
         snprintf(s_ip, sizeof s_ip, IPSTR, IP2STR(&e->ip_info.ip));
         ESP_LOGI(TAG, "log page: http://%s/", s_ip);
         start_web();
+        start_ntp(&e->ip_info.gw);
     }
 }
 
 static bool read_settings(char* ssid, char* pass)
 {
+    static char tz[64] = "EST5EDT,M3.2.0,M11.1.0";
     char p[96];
     path(p, sizeof p, "wifi.txt");
     FILE* f = fopen(p, "r");
@@ -110,8 +145,12 @@ static bool read_settings(char* ssid, char* pass)
         *eq = 0;
         if (!strcmp(line, "ssid")) snprintf(ssid, 33, "%s", eq + 1);
         else if (!strcmp(line, "password")) snprintf(pass, 65, "%s", eq + 1);
+        else if (!strcmp(line, "ntp")) snprintf(s_ntp, sizeof s_ntp, "%s", eq + 1);
+        else if (!strcmp(line, "tz")) snprintf(tz, sizeof tz, "%s", eq + 1);
     }
     fclose(f);
+    setenv("TZ", tz, 1);
+    tzset();
     return ssid[0] != 0;
 }
 

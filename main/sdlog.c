@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "cyd_mac.h"
@@ -18,6 +19,19 @@ static unsigned s_head, s_tail;   // s_head - s_tail bytes waiting
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static vprintf_like_t s_uart;
 static FILE* s_file;
+static bool s_bol = true;   // the next byte starts a line
+
+// "2026-11-25 20:30:05 " once the clock is set (network time), else ""
+static void stamp(char* b, size_t n)
+{
+    b[0] = 0;
+    const int64_t t = hal_unix_time();
+    if (t <= 0) return;
+    const time_t tt = (time_t)t;
+    struct tm lt;
+    localtime_r(&tt, &lt);
+    strftime(b, n, "%Y-%m-%d %H:%M:%S ", &lt);
+}
 
 static void path(char* out, size_t n, const char* name)
 {
@@ -33,8 +47,15 @@ static int log_vprintf(const char* fmt, va_list ap)
     const int len = vsnprintf(line, sizeof line, fmt, ap2);
     va_end(ap2);
     int k = len < 0 ? 0 : (len < (int)sizeof line ? len : (int)sizeof line - 1);
+    char ts[24];
+    stamp(ts, sizeof ts);
     taskENTER_CRITICAL(&s_mux);
-    for (int i = 0; i < k && s_head - s_tail < RING; ++i) s_ring[s_head++ % RING] = line[i];
+    for (int i = 0; i < k && s_head - s_tail < RING - 24; ++i) {
+        if (s_bol)
+            for (const char* p = ts; *p; ++p) s_ring[s_head++ % RING] = *p;
+        s_ring[s_head++ % RING] = line[i];
+        s_bol = line[i] == '\n';
+    }
     taskEXIT_CRITICAL(&s_mux);
     return s_uart ? s_uart(fmt, ap) : len;
 }
@@ -48,7 +69,9 @@ void sdlog_init(void)
     rename(a, b);
     s_file = fopen(a, "w");
     if (s_file) {
-        fprintf(s_file, "CYD Mac SE %s\n", APP_VERSION);
+        char ts[24];
+        stamp(ts, sizeof ts);
+        fprintf(s_file, "%sCYD Mac SE %s\n", ts, APP_VERSION);
         fflush(s_file);
     }
     s_uart = esp_log_set_vprintf(log_vprintf);
@@ -80,7 +103,9 @@ void sdlog_crash(const char* const* lines, int n)
     path(a, sizeof a, "crash.txt");
     FILE* f = fopen(a, "a");
     if (!f) return;
-    fprintf(f, "----\n");
+    char ts[24];
+    stamp(ts, sizeof ts);
+    fprintf(f, "---- %s(reported)\n", ts);
     for (int i = 0; i < n; ++i) fprintf(f, "%s\n", lines[i]);
     fclose(f);
 }

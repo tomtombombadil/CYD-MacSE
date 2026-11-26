@@ -10,6 +10,7 @@
 #include <sdmmc_cmd.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "board.h"
@@ -34,7 +35,13 @@ void hal_unlock(void) { xSemaphoreGive(s_lock); }
 
 const char* const* hal_dirs(void) { return s_dirs; }
 
-int64_t hal_unix_time(void) { return 0; }   // no clock on the board
+// No clock chip: the time comes from the network (wifi_web.c, NTP) and
+// lasts over a restart, not over a power-off
+int64_t hal_unix_time(void)
+{
+    const time_t t = time(NULL);
+    return t > 1764547200 ? (int64_t)t : 0;   // after 2025-12-01: set
+}
 
 void hal_sync_file(void* f) { fsync(fileno((FILE*)f)); }
 

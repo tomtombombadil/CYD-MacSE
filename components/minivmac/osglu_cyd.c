@@ -649,18 +649,25 @@ LOCALFUNC blnr CheckDateTime(void)
 	}
 }
 
+LOCALVAR blnr HaveRealTime = falseblnr;
+
 LOCALFUNC blnr InitLocationDat(void)
 {
 	int64_t t = hal_unix_time();
 	struct tm s;
 	time_t tt;
 
+	HaveRealTime = (t > 0);
 	if (t <= 0) {
 		/* no clock: the day this was built, at noon */
 		t = 1795608000; /* 2026-11-25 12:00 */
 	}
 	tt = (time_t)t;
-	gmtime_r(&tt, &s);
+	if (HaveRealTime) {
+		localtime_r(&tt, &s); /* the Mac keeps local time */
+	} else {
+		gmtime_r(&tt, &s);
+	}
 	TimeBase = (int64_t)Date2MacSeconds(s.tm_sec, s.tm_min, s.tm_hour,
 		s.tm_mday, 1 + s.tm_mon, 1900 + s.tm_year)
 		- (int64_t)(hal_time_us() / 1000000);
@@ -817,6 +824,10 @@ label_retry:
 	}
 
 	if (CheckDateTime()) {
+		if ((! HaveRealTime) && (hal_unix_time() > 0)) {
+			/* the clock was set (network time): the Mac follows */
+			(void) InitLocationDat();
+		}
 #if MySoundEnabled
 		MySound_SecondNotify();
 #endif

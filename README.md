@@ -70,6 +70,11 @@ your network. Settings and the crash screen show the address (for example
 `http://192.168.1.23/`); your router may also know it as
 `http://cyd-macse/`. Delete `wifi.txt` to keep Wi-Fi off.
 
+Once on Wi-Fi the board sets its clock from your router (or the server on
+an `ntp=` line), so the log lines carry the date and time and the Mac
+shows the right date. The time zone is US Eastern unless a `tz=` line
+gives another (a POSIX time zone, e.g. `tz=CST6CDT,M3.2.0,M11.1.0`).
+
 ## Using it
 
 The Mac's screen is shown 1:1 (512x342) at the top middle, the keyboard
@@ -108,8 +113,8 @@ whole flash image, written at address 0x0.
 
 - **Speed on the board is unknown.** The emulated 68000 runs from PSRAM;
   if it can't keep up with a real SE the Mac just runs slower.
-- No clock chip on the board: the Mac's date starts at 25 Nov 2026 each
-  time. PRAM (Control Panel settings) isn't kept over a restart.
+- No clock chip on the board: without Wi-Fi (see above) the Mac's date
+  starts at 25 Nov 2026 each time. PRAM (Control Panel settings) isn't kept over a restart.
 - Not emulated: the serial ports, SCSI (hard disks go through Mini vMac's
   disk driver instead), AppleTalk.
 - The touch controller's INT pin is also the amplifier's LRCLK (the
